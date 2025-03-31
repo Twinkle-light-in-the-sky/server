@@ -9,8 +9,9 @@ require('./queries/databaseQueries');
 require('dotenv').config();
 const app = express();
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
-    methods: ['GET', 'POST'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
 app.use(express.urlencoded({ extended: true }));
@@ -152,6 +153,7 @@ app.get('/service', async (req, res) => {
                 console.error("Ошибка при получении данных услуг:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
+            res.setHeader('Content-Type', 'application/json');
             res.json(results);
         });
     } catch (error) {
@@ -168,6 +170,7 @@ app.get('/projects', async (req, res) => {
                 console.error("Ошибка при получении данных проектов:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
+            res.setHeader('Content-Type', 'application/json');
             res.json(results);
         });
     } catch (error) {
@@ -181,9 +184,10 @@ app.get('/benefits', async (req, res) => {
         const getServicesQuery = 'SELECT id, benefit_title, benefit_description FROM benefits';
         db.query(getServicesQuery, (err, results) => {
             if (err) {
-                console.error("Ошибка при получении данных ghtbveotcnd:", err);
+                console.error("Ошибка при получении данных преимуществ:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
+            res.setHeader('Content-Type', 'application/json');
             res.json(results);
         });
     } catch (error) {
@@ -196,9 +200,10 @@ app.get('/orderstatuses', async (req, res) => {
         const getServicesQuery = 'SELECT id, status_name FROM order_statuses';
         db.query(getServicesQuery, (err, results) => {
             if (err) {
-                console.error("Ошибка при получении данных статусов заказаов:", err);
+                console.error("Ошибка при получении данных статусов заказов:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
+            res.setHeader('Content-Type', 'application/json');
             res.json(results);
         });
     } catch (error) {
