@@ -39,9 +39,10 @@ app.use('/uploads/projects-bg', express.static(projectsBgPath));
 app.post('/logpage', async (req, res) => {
     try {
         const { username, password } = req.body;
-        console.log("Полученные данные для входа:", req.body);
+        console.log("Полученные данные для входа:", { username, password });
 
         const checkUserQuery = 'SELECT id, username, email, password, role, avatar FROM user WHERE username = ?';
+        console.log("Выполняется запрос:", checkUserQuery, "с параметром:", username);
 
         const results = await new Promise((resolve, reject) => {
             db.query(checkUserQuery, [username], (err, results) => {
@@ -49,19 +50,30 @@ app.post('/logpage', async (req, res) => {
                     console.error('Ошибка при выполнении запроса:', err);
                     reject(err);
                 } else {
+                    console.log("Результаты запроса:", results);
                     resolve(results);
                 }
             });
         });
 
         if (results.length === 0) {
+            console.log("Пользователь не найден:", username);
             return res.status(401).json({ error: 'Пользователь не найден' });
         }
 
         const user = results[0];
+        console.log("Найден пользователь:", { 
+            id: user.id, 
+            username: user.username, 
+            role: user.role,
+            hasPassword: !!user.password 
+        });
+
         const validPassword = await bcrypt.compare(password, user.password);
+        console.log("Результат проверки пароля:", validPassword);
 
         if (!validPassword) {
+            console.log("Неверный пароль для пользователя:", username);
             return res.status(401).json({ error: 'Неверный пароль' });
         }
 
@@ -71,6 +83,7 @@ app.post('/logpage', async (req, res) => {
             { expiresIn: '24h' }
         );
 
+        console.log("Успешная авторизация для пользователя:", username);
         res.json({
             token,
             user: {
