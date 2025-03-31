@@ -5,15 +5,12 @@ const mysql = require('mysql');
 const pool = mysql.createPool({
     host: 'barsikec.beget.tech',
     user: 'barsikec_er',
-    password: 'Wertikal229', // Замените на ваш пароль
+    password: 'Wertikal229',
     database: 'barsikec_er',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    port: 3306,
-    ssl: {
-        rejectUnauthorized: false
-    }
+    port: 3306
 });
 
 // Проверяем подключение
