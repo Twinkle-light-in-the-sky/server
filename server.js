@@ -110,38 +110,58 @@ app.post('/regpage', async (req, res) => {
         const { username, email, password } = req.body;
         console.log("Полученные данные:", req.body);
 
+        if (!username || !email || !password) {
+            return res.status(400).json({ error: 'Все поля должны быть заполнены' });
+        }
+
         const defaultAvatarPath = 'default.jpg';
-        const avatarPath = defaultAvatarPath;
 
-        console.log("Используемый путь к аватарке:", avatarPath);
-
-        const checkUserQuery = 'SELECT * FROM user WHERE username = ?';
-        db.query(checkUserQuery, [username], async (err, results) => {
-            if (err) {
-                console.error("Ошибка при проверке пользователя:", err);
-                return res.status(500).json({ error: 'Ошибка при проверке пользователя' });
-            }
-            if (results.length > 0) {
-                return res.status(400).json({ error: 'Пользователь с таким именем уже существует' });
-            }
-
-            const hashedPassword = await bcrypt.hash(password, 10);
-            const role = 0;
-            const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar) VALUES (?, ?, ?, ?, ?)';
-
-            console.log("Данные для вставки:", [username, hashedPassword, email, role, avatarPath]);
-
-            db.query(insertUserQuery, [username, hashedPassword, email, role, avatarPath], (err, results) => {
+        // Проверяем существование пользователя
+        const checkUserQuery = 'SELECT * FROM user WHERE username = ? OR email = ?';
+        const existingUser = await new Promise((resolve, reject) => {
+            db.query(checkUserQuery, [username, email], (err, results) => {
                 if (err) {
-                    console.error("Ошибка при вставке пользователя:", err);
-                    return res.status(500).json({ error: 'Ошибка при вставке пользователя' });
+                    console.error("Ошибка при проверке пользователя:", err);
+                    reject(err);
+                } else {
+                    resolve(results);
                 }
-                return res.status(201).json({ message: 'Пользователь успешно зарегистрирован' });
             });
         });
+
+        if (existingUser.length > 0) {
+            const existingUsername = existingUser[0].username === username;
+            return res.status(400).json({ 
+                error: existingUsername ? 
+                    'Пользователь с таким именем уже существует' : 
+                    'Пользователь с таким email уже существует' 
+            });
+        }
+
+        // Хешируем пароль
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const role = 0;
+
+        // Создаем пользователя
+        const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar) VALUES (?, ?, ?, ?, ?)';
+        await new Promise((resolve, reject) => {
+            db.query(insertUserQuery, [username, hashedPassword, email, role, defaultAvatarPath], (err, results) => {
+                if (err) {
+                    console.error("Ошибка при вставке пользователя:", err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+
+        return res.status(201).json({ message: 'Пользователь успешно зарегистрирован' });
     } catch (error) {
-        console.error("Ошибка:", error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        console.error("Ошибка при регистрации:", error);
+        res.status(500).json({ 
+            error: 'Внутренняя ошибка сервера',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
@@ -197,17 +217,17 @@ app.get('/benefits', async (req, res) => {
 });
 app.get('/orderstatuses', async (req, res) => {
     try {
-        const getServicesQuery = 'SELECT id, status_name FROM order_statuses';
-        db.query(getServicesQuery, (err, results) => {
+        const getStatusesQuery = 'SELECT * FROM order_statuses';
+        db.query(getStatusesQuery, (err, results) => {
             if (err) {
-                console.error("Ошибка при получении данных статусов заказов:", err);
+                console.error("Ошибка при получении статусов:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
             res.setHeader('Content-Type', 'application/json');
             res.json(results);
         });
     } catch (error) {
-        console.error("Ошибка при обработке запроса /orderstatuses", error);
+        console.error("Ошибка при обработке запроса /orderstatuses:", error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -267,13 +287,33 @@ app.get('/executors', async (req, res) => {
 
 app.get('/orders', async (req, res) => {
     try {
-        const activeOrders = await getActiveOrders();
-        const completedOrders = await getCompletedOrders();
+        const userId = req.query.userId; // Получаем userId из query параметров
+        console.log("Получен запрос заказов для пользователя:", userId);
+
+        const getOrdersQuery = `
+            SELECT o.*, 
+                   s.title as service_name,
+                   e.fullname as executor_name,
+                   os.status_name
+            FROM orders o
+            LEFT JOIN services s ON o.services_id = s.id
+            LEFT JOIN executors e ON o.executor_id = e.id
+            LEFT JOIN order_statuses os ON o.status_id = os.id
+            WHERE o.user_id = ?
+        `;
         
-        res.json({ activeOrders, completedOrders });
+        db.query(getOrdersQuery, [userId], (err, results) => {
+            if (err) {
+                console.error("Ошибка при получении заказов:", err);
+                return res.status(500).json({ error: 'Ошибка при получении данных' });
+            }
+            console.log("Полученные заказы для пользователя:", userId, results);
+            res.setHeader('Content-Type', 'application/json');
+            res.json(results);
+        });
     } catch (error) {
-        console.error("Ошибка при получении заказов:", error);
-        res.status(500).json({ error: 'Ошибка при получении заказов' });
+        console.error("Ошибка при обработке запроса /orders:", error);
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
