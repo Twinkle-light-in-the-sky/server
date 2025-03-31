@@ -45,52 +45,48 @@ app.post('/logpage', async (req, res) => {
 
         const results = await new Promise((resolve, reject) => {
             db.query(checkUserQuery, [username], (err, results) => {
-                if (err) reject(err);
-                else resolve(results);
+                if (err) {
+                    console.error('Ошибка при выполнении запроса:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
             });
         });
 
-
         if (results.length === 0) {
-            console.warn("Пользователь не найден:", username);
-            return res.status(400).json({ error: 'Пользователь не найден' });
+            return res.status(401).json({ error: 'Пользователь не найден' });
         }
 
         const user = results[0];
+        const validPassword = await bcrypt.compare(password, user.password);
 
-        if (!user.password) {
-            console.error("Пароль пользователя не найден в базе данных!");
-            return res.status(500).json({ error: 'Ошибка: пароль пользователя не найден!' });
+        if (!validPassword) {
+            return res.status(401).json({ error: 'Неверный пароль' });
         }
 
-        const match = await bcrypt.compare(password, user.password);
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
 
-        if (!match) {
-            console.warn("Неверный пароль для пользователя:", username);
-            return res.status(400).json({ error: 'Неверный пароль' });
-        }
-
-        const token = jwt.sign({ id: user.id, username: user.username, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        console.log("Успешный вход для пользователя:", username);
-        console.log("Данные пользователя:", { 
-            id: user.id, 
-            username: user.username, 
-            email: user.email, 
-            role: user.role 
-        });
-        return res.status(200).json({
-            message: 'Успешный вход',
+        res.json({
             token,
-            role: user.role,
-            avatar: user.avatar,
-            id: user.id,
-            email: user.email // email добавлен в ответ
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                avatar: user.avatar
+            }
         });
-        
-        
     } catch (error) {
-        console.error("Ошибка во время обработки запроса:", error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера', details: error.message });
+        console.error('Ошибка при входе:', error);
+        res.status(500).json({ 
+            error: 'Внутренняя ошибка сервера', 
+            details: error.message 
+        });
     }
 });
 
