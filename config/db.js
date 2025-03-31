@@ -3,14 +3,15 @@ const mysql = require('mysql');
 
 // Создаем пул подключений вместо одного подключения
 const pool = mysql.createPool({
-    host: 'barsikec.beget.tech',
-    user: 'barsikec_er',
-    password: 'Wertikal229',
-    database: 'barsikec_er',
+    host: process.env.DB_HOST || 'barsikec.beget.tech',
+    user: process.env.DB_USER || 'barsikec_er',
+    password: process.env.DB_PASSWORD || 'Wertikal229',
+    database: process.env.DB_NAME || 'barsikec_er',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    port: 3306
+    port: 3306,
+    ssl: false
 });
 
 // Проверяем подключение

@@ -85,7 +85,8 @@ app.post('/logpage', async (req, res) => {
         console.error('Ошибка при входе:', error);
         res.status(500).json({ 
             error: 'Внутренняя ошибка сервера', 
-            details: error.message 
+            details: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });
