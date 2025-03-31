@@ -9,7 +9,7 @@ require('./queries/databaseQueries');
 require('dotenv').config();
 const app = express();
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'http://barsikec.beget.tech', 'https://barsikec.beget.tech'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
