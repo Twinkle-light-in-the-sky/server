@@ -43,6 +43,11 @@ app.post('/regpage', async (req, res) => {
         
         // Проверяем обязательные поля
         if (!req.body.username || !req.body.email || !req.body.password) {
+            console.log('Отсутствуют обязательные поля:', {
+                username: !!req.body.username,
+                email: !!req.body.email,
+                password: !!req.body.password
+            });
             return res.status(400).json({
                 success: false,
                 error: 'Пожалуйста, заполните все обязательные поля'
@@ -50,6 +55,11 @@ app.post('/regpage', async (req, res) => {
         }
 
         // Проверяем, существует ли пользователь
+        console.log('Проверка существующего пользователя:', {
+            username: req.body.username,
+            email: req.body.email
+        });
+        
         const existingUser = await new Promise((resolve, reject) => {
             db.query('SELECT * FROM user WHERE username = ? OR email = ?', [req.body.username, req.body.email], (err, results) => {
                 if (err) {
@@ -62,6 +72,7 @@ app.post('/regpage', async (req, res) => {
         });
 
         if (existingUser.length > 0) {
+            console.log('Пользователь уже существует:', existingUser[0]);
             return res.status(400).json({
                 success: false,
                 error: 'Пользователь с таким именем или email уже существует'
@@ -70,19 +81,27 @@ app.post('/regpage', async (req, res) => {
 
         // Хешируем пароль
         const hashedPassword = await bcrypt.hash(req.body.password, 10);
+        console.log('Пароль успешно захеширован');
 
         // Создаем нового пользователя
         const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar, phone, address) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        const insertValues = [
+            req.body.username,
+            hashedPassword,
+            req.body.email,
+            req.body.role || 'user',
+            'default.jpg',
+            req.body.phone || null,
+            req.body.address || null
+        ];
+        
+        console.log('Подготовка к вставке пользователя:', {
+            query: insertUserQuery,
+            values: insertValues.map((v, i) => i === 1 ? '[HASHED]' : v)
+        });
+
         const insertResult = await new Promise((resolve, reject) => {
-            db.query(insertUserQuery, [
-                req.body.username,
-                hashedPassword,
-                req.body.email,
-                req.body.role || 'user',
-                'default.jpg',
-                req.body.phone || null,
-                req.body.address || null
-            ], (err, results) => {
+            db.query(insertUserQuery, insertValues, (err, results) => {
                 if (err) {
                     console.error("Ошибка при вставке пользователя:", err);
                     reject(err);
@@ -92,34 +111,55 @@ app.post('/regpage', async (req, res) => {
             });
         });
 
-        const user = insertResult.rows[0];
-        console.log('Создан новый пользователь:', user);
+        console.log('Результат вставки:', insertResult);
+
+        // Получаем данные созданного пользователя
+        console.log('Получение данных созданного пользователя с ID:', insertResult.insertId);
+        
+        const newUser = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM user WHERE id = ?', [insertResult.insertId], (err, results) => {
+                if (err) {
+                    console.error("Ошибка при получении данных пользователя:", err);
+                    reject(err);
+                } else {
+                    resolve(results[0]);
+                }
+            });
+        });
+
+        console.log('Создан новый пользователь:', newUser);
 
         // Создаем токен
         const token = jwt.sign(
             { 
-                id: user.id,
-                username: user.username,
-                role: user.role
+                id: newUser.id,
+                username: newUser.username,
+                role: newUser.role
             },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '24h' }
         );
 
+        console.log('Токен успешно создан');
+
         // Отправляем ответ
-        res.json({
+        const response = {
             success: true,
             message: 'Регистрация успешна',
             user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                role: user.role,
-                phone: user.phone,
-                address: user.address
+                id: newUser.id,
+                username: newUser.username,
+                email: newUser.email,
+                role: newUser.role,
+                phone: newUser.phone,
+                address: newUser.address,
+                avatar: newUser.avatar
             },
             token
-        });
+        };
+
+        console.log('Отправка ответа:', response);
+        res.json(response);
     } catch (error) {
         console.error('Ошибка при регистрации:', error);
         res.status(500).json({
