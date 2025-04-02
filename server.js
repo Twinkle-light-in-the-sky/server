@@ -14,14 +14,27 @@ const axios = require('axios');
 const app = express();
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: true,
     maxAge: 86400 // 24 часа
 }));
 
 // Добавляем middleware для обработки preflight запросов
 app.options('*', cors());
+
+// Добавляем middleware для всех запросов
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -315,7 +328,9 @@ app.get('/service', async (req, res) => {
                 console.error("Ошибка при получении данных услуг:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
@@ -341,6 +356,9 @@ app.get('/projects', async (req, res) => {
 
         console.log('Найдено проектов:', projects.length);
         
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.json({
             success: true,
             data: projects
@@ -362,7 +380,9 @@ app.get('/benefits', async (req, res) => {
                 console.error("Ошибка при получении данных преимуществ:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
@@ -378,7 +398,9 @@ app.get('/orderstatuses', async (req, res) => {
                 console.error("Ошибка при получении статусов:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
@@ -433,6 +455,9 @@ app.get('/executors', async (req, res) => {
     try {
         console.log('Вызов getAllExecutors');
         const executors = await getAllExecutors();
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.json(executors);
     } catch (error) {
         console.error("Ошибка при получении исполнителей:", error);
@@ -442,7 +467,7 @@ app.get('/executors', async (req, res) => {
 
 app.get('/orders', async (req, res) => {
     try {
-        const userId = req.query.userId; // Получаем userId из query параметров
+        const userId = req.query.userId;
         console.log("Получен запрос заказов для пользователя:", userId);
 
         const getOrdersQuery = `
@@ -463,7 +488,9 @@ app.get('/orders', async (req, res) => {
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
             console.log("Полученные заказы для пользователя:", userId, results);
-            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
