@@ -42,7 +42,13 @@ app.post('/logpage', async (req, res) => {
         const { username, password } = req.body;
         console.log("Полученные данные для входа:", { username, password });
 
-        const checkUserQuery = 'SELECT id, username, email, password, role, avatar FROM user WHERE username = ?';
+        if (!username || !password) {
+            return res.status(400).json({ 
+                error: 'Пожалуйста, введите логин и пароль' 
+            });
+        }
+
+        const checkUserQuery = 'SELECT id, username, email, password, role, avatar, phone, address FROM user WHERE username = ?';
         console.log("Выполняется запрос:", checkUserQuery, "с параметром:", username);
 
         const results = await new Promise((resolve, reject) => {
@@ -92,15 +98,16 @@ app.post('/logpage', async (req, res) => {
                 username: user.username,
                 email: user.email,
                 role: user.role,
-                avatar: user.avatar
+                avatar: user.avatar,
+                phone: user.phone,
+                address: user.address
             }
         });
     } catch (error) {
         console.error('Ошибка при входе:', error);
         res.status(500).json({ 
             error: 'Внутренняя ошибка сервера', 
-            details: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
