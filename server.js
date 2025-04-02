@@ -37,179 +37,177 @@ const projectsBgPath = path.join(__dirname, 'uploads', 'projects-bg');
 app.use('/uploads/projects-bg', express.static(projectsBgPath));
 
 
-app.post('/auth', async (req, res) => {
+app.post('/regpage', async (req, res) => {
     try {
-        const { username, password, email, role, phone, address, action } = req.body;
-        console.log("Полученные данные:", req.body);
-
-        // Проверяем наличие action
-        if (!action) {
-            return res.status(400).json({ error: 'Не указано действие (register/login)' });
+        console.log('Получен запрос на регистрацию:', req.body);
+        
+        // Проверяем обязательные поля
+        if (!req.body.username || !req.body.email || !req.body.password) {
+            return res.status(400).json({
+                success: false,
+                error: 'Пожалуйста, заполните все обязательные поля'
+            });
         }
 
-        // Если это регистрация
-        if (action === 'register') {
-            // Проверяем обязательные поля
-            if (!username || !email || !password) {
-                return res.status(400).json({ 
-                    error: 'Все обязательные поля должны быть заполнены',
-                    details: {
-                        username: !username ? 'Имя пользователя обязательно' : null,
-                        email: !email ? 'Email обязателен' : null,
-                        password: !password ? 'Пароль обязателен' : null
-                    }
-                });
-            }
-
-            const defaultAvatarPath = 'default.jpg';
-
-            // Проверяем существование пользователя
-            const checkUserQuery = 'SELECT * FROM user WHERE username = ? OR email = ?';
-            const existingUser = await new Promise((resolve, reject) => {
-                db.query(checkUserQuery, [username, email], (err, results) => {
-                    if (err) {
-                        console.error("Ошибка при проверке пользователя:", err);
-                        reject(err);
-                    } else {
-                        resolve(results);
-                    }
-                });
-            });
-
-            if (existingUser.length > 0) {
-                const existingUsername = existingUser[0].username === username;
-                return res.status(400).json({ 
-                    error: existingUsername ? 
-                        'Пользователь с таким именем уже существует' : 
-                        'Пользователь с таким email уже существует' 
-                });
-            }
-
-            // Хешируем пароль
-            const hashedPassword = await bcrypt.hash(password, 10);
-
-            // Создаем пользователя
-            const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar, phone, address) VALUES (?, ?, ?, ?, ?, ?, ?)';
-            const insertResult = await new Promise((resolve, reject) => {
-                db.query(insertUserQuery, [
-                    username, 
-                    hashedPassword, 
-                    email, 
-                    role || 'user',
-                    defaultAvatarPath,
-                    phone || null,
-                    address || null
-                ], (err, results) => {
-                    if (err) {
-                        console.error("Ошибка при вставке пользователя:", err);
-                        reject(err);
-                    } else {
-                        resolve(results);
-                    }
-                });
-            });
-
-            // Получаем ID нового пользователя
-            const userId = insertResult.insertId;
-
-            // Создаем токен
-            const token = jwt.sign(
-                { id: userId, username, role: role || 'user' },
-                process.env.JWT_SECRET || 'your-secret-key',
-                { expiresIn: '24h' }
-            );
-
-            return res.status(201).json({
-                message: 'Пользователь успешно зарегистрирован',
-                token,
-                user: {
-                    id: userId,
-                    username,
-                    email,
-                    role: role || 'user',
-                    avatar: defaultAvatarPath,
-                    phone: phone || null,
-                    address: address || null
+        // Проверяем, существует ли пользователь
+        const existingUser = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM user WHERE username = ? OR email = ?', [req.body.username, req.body.email], (err, results) => {
+                if (err) {
+                    console.error("Ошибка при проверке пользователя:", err);
+                    reject(err);
+                } else {
+                    resolve(results);
                 }
             });
-        }
-        // Если это авторизация
-        else if (action === 'login') {
-            if (!username || !password) {
-                return res.status(400).json({ 
-                    error: 'Пожалуйста, введите логин и пароль',
-                    details: {
-                        username: !username ? 'Имя пользователя обязательно' : null,
-                        password: !password ? 'Пароль обязателен' : null
-                    }
-                });
-            }
+        });
 
-            const checkUserQuery = 'SELECT id, username, email, password, role, avatar, phone, address FROM user WHERE username = ?';
-            console.log("Выполняется запрос:", checkUserQuery, "с параметром:", username);
-
-            const results = await new Promise((resolve, reject) => {
-                db.query(checkUserQuery, [username], (err, results) => {
-                    if (err) {
-                        console.error('Ошибка при выполнении запроса:', err);
-                        reject(err);
-                    } else {
-                        console.log("Результаты запроса:", results);
-                        resolve(results);
-                    }
-                });
+        if (existingUser.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Пользователь с таким именем или email уже существует'
             });
+        }
 
-            if (results.length === 0) {
-                console.log("Пользователь не найден:", username);
-                return res.status(401).json({ error: 'Пользователь не найден' });
-            }
+        // Хешируем пароль
+        const hashedPassword = await bcrypt.hash(req.body.password, 10);
 
-            const user = results[0];
-            console.log("Найден пользователь:", { 
-                id: user.id, 
-                username: user.username, 
+        // Создаем нового пользователя
+        const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar, phone, address) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        const insertResult = await new Promise((resolve, reject) => {
+            db.query(insertUserQuery, [
+                req.body.username,
+                hashedPassword,
+                req.body.email,
+                req.body.role || 'user',
+                'default.jpg',
+                req.body.phone || null,
+                req.body.address || null
+            ], (err, results) => {
+                if (err) {
+                    console.error("Ошибка при вставке пользователя:", err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+
+        const user = insertResult.rows[0];
+        console.log('Создан новый пользователь:', user);
+
+        // Создаем токен
+        const token = jwt.sign(
+            { 
+                id: user.id,
+                username: user.username,
+                role: user.role
+            },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
+
+        // Отправляем ответ
+        res.json({
+            success: true,
+            message: 'Регистрация успешна',
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
                 role: user.role,
-                hasPassword: !!user.password 
+                phone: user.phone,
+                address: user.address
+            },
+            token
+        });
+    } catch (error) {
+        console.error('Ошибка при регистрации:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при регистрации пользователя'
+        });
+    }
+});
+
+app.post('/logpage', async (req, res) => {
+    try {
+        console.log('Получен запрос на авторизацию:', req.body);
+        
+        // Проверяем обязательные поля
+        if (!req.body.username || !req.body.password) {
+            return res.status(400).json({
+                success: false,
+                error: 'Пожалуйста, введите имя пользователя и пароль'
             });
+        }
 
-            const validPassword = await bcrypt.compare(password, user.password);
-            console.log("Результат проверки пароля:", validPassword);
+        // Ищем пользователя
+        const checkUserQuery = 'SELECT id, username, email, password, role, avatar, phone, address FROM user WHERE username = ?';
+        console.log("Выполняется запрос:", checkUserQuery, "с параметром:", req.body.username);
 
-            if (!validPassword) {
-                console.log("Неверный пароль для пользователя:", username);
-                return res.status(401).json({ error: 'Неверный пароль' });
-            }
-
-            const token = jwt.sign(
-                { id: user.id, username: user.username, role: user.role },
-                process.env.JWT_SECRET || 'your-secret-key',
-                { expiresIn: '24h' }
-            );
-
-            console.log("Успешная авторизация для пользователя:", username);
-            res.json({
-                token,
-                user: {
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-                    role: user.role,
-                    avatar: user.avatar,
-                    phone: user.phone,
-                    address: user.address
+        const results = await new Promise((resolve, reject) => {
+            db.query(checkUserQuery, [req.body.username], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при выполнении запроса:', err);
+                    reject(err);
+                } else {
+                    console.log("Результаты запроса:", results);
+                    resolve(results);
                 }
             });
+        });
+
+        if (results.length === 0) {
+            console.log("Пользователь не найден:", req.body.username);
+            return res.status(401).json({
+                success: false,
+                error: 'Неверное имя пользователя или пароль'
+            });
         }
-        // Если действие не указано
-        else {
-            return res.status(400).json({ error: 'Неверное действие. Используйте register или login' });
+
+        const user = results[0];
+        console.log('Найден пользователь:', user);
+
+        // Проверяем пароль
+        const validPassword = await bcrypt.compare(req.body.password, user.password);
+        if (!validPassword) {
+            console.log("Неверный пароль для пользователя:", req.body.username);
+            return res.status(401).json({
+                success: false,
+                error: 'Неверное имя пользователя или пароль'
+            });
         }
+
+        // Создаем токен
+        const token = jwt.sign(
+            { 
+                id: user.id,
+                username: user.username,
+                role: user.role
+            },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
+
+        // Отправляем ответ
+        res.json({
+            success: true,
+            message: 'Вход выполнен успешно',
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                phone: user.phone,
+                address: user.address
+            },
+            token
+        });
     } catch (error) {
-        console.error('Ошибка:', error);
-        res.status(500).json({ 
-            error: 'Внутренняя ошибка сервера', 
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        console.error('Ошибка при авторизации:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при авторизации'
         });
     }
 });
