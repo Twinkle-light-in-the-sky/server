@@ -26,10 +26,15 @@ app.options('*', cors());
 
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'].includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+    }
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
     res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Max-Age', '86400');
+    
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
@@ -542,7 +547,7 @@ app.post('/upload-avatar', authenticateToken, upload.single('avatar'), async (re
 });
 
 // Эндпоинт для обновления профиля
-app.put('/updateprofile', authenticateToken, async (req, res) => {
+app.put('/api/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
