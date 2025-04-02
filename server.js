@@ -17,7 +17,6 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    credentials: true,
     maxAge: 86400 // 24 часа
 }));
 
@@ -26,13 +25,19 @@ app.options('*', cors());
 
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
+    console.log('Incoming request:', {
+        method: req.method,
+        path: req.path,
+        headers: req.headers,
+        body: req.body
+    });
+
     const origin = req.headers.origin;
     if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'].includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
     }
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
-    res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
