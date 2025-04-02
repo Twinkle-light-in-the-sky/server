@@ -12,7 +12,7 @@ const https = require('https');
 const fs = require('fs');
 const app = express();
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
@@ -32,7 +32,7 @@ app.use((req, res, next) => {
     });
 
     const origin = req.headers.origin;
-    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'].includes(origin)) {
+    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
     }
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -511,7 +511,10 @@ app.get('/orders', async (req, res) => {
 // Эндпоинт для загрузки аватара
 app.post('/upload-avatar', authenticateToken, async (req, res) => {
   try {
+    console.log('Получен запрос на загрузку аватара');
+    
     if (!req.body.image) {
+      console.log('Изображение не было загружено');
       return res.status(400).json({
         success: false,
         error: 'Изображение не было загружено'
@@ -520,9 +523,11 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
 
     // Получаем base64 изображения
     const base64Image = req.body.image.split(',')[1];
+    console.log('Base64 изображение получено');
     
     // Загружаем изображение на ImgBB
     const imgbbApiKey = process.env.IMGBB_API_KEY;
+    console.log('ImgBB API Key:', imgbbApiKey ? 'Присутствует' : 'Отсутствует');
     
     if (!imgbbApiKey) {
       console.error('Отсутствует ключ ImgBB API');
@@ -538,6 +543,7 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
       name: `avatar-${req.user.id}-${Date.now()}`
     };
     
+    console.log('Отправка запроса к ImgBB API');
     const imgbbResponse = await new Promise((resolve, reject) => {
       const data = JSON.stringify(formData);
       
@@ -560,21 +566,26 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
         
         res.on('end', () => {
           try {
+            console.log('Получен ответ от ImgBB API:', responseData);
             const parsedData = JSON.parse(responseData);
             resolve(parsedData);
           } catch (error) {
+            console.error('Ошибка при парсинге ответа от ImgBB:', error);
             reject(error);
           }
         });
       });
       
       req.on('error', (error) => {
+        console.error('Ошибка при запросе к ImgBB:', error);
         reject(error);
       });
       
       req.write(data);
       req.end();
     });
+    
+    console.log('Ответ от ImgBB:', imgbbResponse);
     
     if (!imgbbResponse.success) {
       console.error('Ошибка при загрузке на ImgBB:', imgbbResponse);
@@ -586,22 +597,27 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
     
     // Получаем URL загруженного изображения
     const imageUrl = imgbbResponse.data.url;
+    console.log('URL загруженного изображения:', imageUrl);
     
     // Обновляем аватар пользователя в базе данных
+    console.log('Обновление аватара в базе данных для пользователя:', req.user.id);
     const updateResult = await new Promise((resolve, reject) => {
       db.query(
         'UPDATE user SET avatar = ? WHERE id = ?',
         [imageUrl, req.user.id],
         (err, results) => {
           if (err) {
+            console.error('Ошибка при обновлении аватара в БД:', err);
             reject(err);
           } else {
+            console.log('Аватар успешно обновлен в БД');
             resolve(results);
           }
         }
       );
     });
     
+    console.log('Отправка успешного ответа клиенту');
     res.json({
       success: true,
       message: 'Аватар успешно обновлен',
