@@ -134,8 +134,18 @@ app.post('/logpage', async (req, res) => {
         const { username, password } = req.body;
         console.log('Получен запрос на авторизацию:', { username });
 
-        // Поиск пользователя
-        const [user] = await db.query('SELECT * FROM user WHERE username = ?', [username]);
+        // Поиск пользователя с использованием Promise
+        const user = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM user WHERE username = ?', [username], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при поиске пользователя:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+
         console.log('Найден пользователь:', user[0]);
 
         if (!user || user.length === 0) {
