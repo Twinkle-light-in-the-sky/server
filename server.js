@@ -6,8 +6,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const path = require('path');
 require('./queries/databaseQueries');
-require('dotenv').config();
+require('dotenv').config({ path: '../.env' });
 const multer = require('multer');
+const https = require('https');
+const fs = require('fs');
 const app = express();
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'],
@@ -507,45 +509,111 @@ app.get('/orders', async (req, res) => {
 });
 
 // Эндпоинт для загрузки аватара
-app.post('/upload-avatar', authenticateToken, localUpload.single('avatar'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                error: 'Файл не был загружен'
-            });
-        }
-
-        // Получаем относительный путь к файлу
-        const avatarPath = path.join('uploads', 'avatars', req.file.filename);
-
-        // Обновляем аватар пользователя в базе данных
-        const updateResult = await new Promise((resolve, reject) => {
-            db.query(
-                'UPDATE user SET avatar = ? WHERE id = ?',
-                [req.file.filename, req.user.id],
-                (err, results) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(results);
-                    }
-                }
-            );
-        });
-
-        res.json({
-            success: true,
-            message: 'Аватар успешно обновлен',
-            avatar: avatarPath
-        });
-    } catch (error) {
-        console.error('Ошибка при загрузке аватара:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка при загрузке аватара'
-        });
+app.post('/upload-avatar', authenticateToken, async (req, res) => {
+  try {
+    if (!req.body.image) {
+      return res.status(400).json({
+        success: false,
+        error: 'Изображение не было загружено'
+      });
     }
+
+    // Получаем base64 изображения
+    const base64Image = req.body.image.split(',')[1];
+    
+    // Загружаем изображение на ImgBB
+    const imgbbApiKey = process.env.REACT_APP_IMGBB_API_KEY;
+    
+    if (!imgbbApiKey) {
+      console.error('Отсутствует ключ ImgBB API');
+      return res.status(500).json({
+        success: false,
+        error: 'Ошибка конфигурации сервера'
+      });
+    }
+    
+    const formData = {
+      key: imgbbApiKey,
+      image: base64Image,
+      name: `avatar-${req.user.id}-${Date.now()}`
+    };
+    
+    const imgbbResponse = await new Promise((resolve, reject) => {
+      const data = JSON.stringify(formData);
+      
+      const options = {
+        hostname: 'api.imgbb.com',
+        path: '/1/upload',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': data.length
+        }
+      };
+      
+      const req = https.request(options, (res) => {
+        let responseData = '';
+        
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            const parsedData = JSON.parse(responseData);
+            resolve(parsedData);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      
+      req.on('error', (error) => {
+        reject(error);
+      });
+      
+      req.write(data);
+      req.end();
+    });
+    
+    if (!imgbbResponse.success) {
+      console.error('Ошибка при загрузке на ImgBB:', imgbbResponse);
+      return res.status(500).json({
+        success: false,
+        error: 'Ошибка при загрузке изображения на ImgBB'
+      });
+    }
+    
+    // Получаем URL загруженного изображения
+    const imageUrl = imgbbResponse.data.url;
+    
+    // Обновляем аватар пользователя в базе данных
+    const updateResult = await new Promise((resolve, reject) => {
+      db.query(
+        'UPDATE user SET avatar = ? WHERE id = ?',
+        [imageUrl, req.user.id],
+        (err, results) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(results);
+          }
+        }
+      );
+    });
+    
+    res.json({
+      success: true,
+      message: 'Аватар успешно обновлен',
+      avatar: imageUrl
+    });
+  } catch (error) {
+    console.error('Ошибка при загрузке аватара:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка при загрузке аватара'
+    });
+  }
 });
 
 // Эндпоинт для обновления профиля пользователя
@@ -553,7 +621,7 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
-    const { username } = req.body;
+    const { username, email, phone, address } = req.body;
 
     // Получаем текущего пользователя
     const [user] = await new Promise((resolve, reject) => {
@@ -571,7 +639,7 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Пользователь не найден' });
     }
 
-    // Проверяем уникальность username
+    // Проверяем уникальность username, если он изменился
     if (username && username !== user.username) {
       const [existingUser] = await new Promise((resolve, reject) => {
         db.query('SELECT id FROM user WHERE username = ? AND id != ?', [username, userId], (error, results) => {
@@ -587,12 +655,58 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
         console.log('Username уже занят:', username);
         return res.status(400).json({ message: 'Это имя пользователя уже занято' });
       }
+    }
 
-      // Обновляем username
-      await new Promise((resolve, reject) => {
-        db.query('UPDATE user SET username = ? WHERE id = ?', [username, userId], (error, results) => {
+    // Проверяем уникальность email, если он изменился
+    if (email && email !== user.email) {
+      const [existingEmail] = await new Promise((resolve, reject) => {
+        db.query('SELECT id FROM user WHERE email = ? AND id != ?', [email, userId], (error, results) => {
           if (error) {
-            console.error('Ошибка при обновлении username:', error);
+            console.error('Ошибка при проверке email:', error);
+            reject(error);
+          }
+          resolve(results);
+        });
+      });
+
+      if (existingEmail) {
+        console.log('Email уже занят:', email);
+        return res.status(400).json({ message: 'Этот email уже используется' });
+      }
+    }
+
+    // Обновляем данные пользователя
+    const updateFields = [];
+    const updateValues = [];
+
+    if (username) {
+      updateFields.push('username = ?');
+      updateValues.push(username);
+    }
+
+    if (email) {
+      updateFields.push('email = ?');
+      updateValues.push(email);
+    }
+
+    if (phone !== undefined) {
+      updateFields.push('phone = ?');
+      updateValues.push(phone);
+    }
+
+    if (address !== undefined) {
+      updateFields.push('address = ?');
+      updateValues.push(address);
+    }
+
+    if (updateFields.length > 0) {
+      updateValues.push(userId);
+      const updateQuery = `UPDATE user SET ${updateFields.join(', ')} WHERE id = ?`;
+      
+      await new Promise((resolve, reject) => {
+        db.query(updateQuery, updateValues, (error, results) => {
+          if (error) {
+            console.error('Ошибка при обновлении данных пользователя:', error);
             reject(error);
           }
           resolve(results);
