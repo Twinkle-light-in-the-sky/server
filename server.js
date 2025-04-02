@@ -83,14 +83,19 @@ app.post('/regpage', async (req, res) => {
         const hashedPassword = await bcrypt.hash(req.body.password, 10);
         console.log('Пароль успешно захеширован');
 
+        // Проверяем наличие файла default.jpg
+        const defaultAvatarPath = path.join(__dirname, 'uploads', 'avatars', 'default.jpg');
+        console.log('Путь к дефолтному аватару:', defaultAvatarPath);
+        
         // Создаем нового пользователя
         const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar, phone, address) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        const defaultAvatar = 'default.jpg'; // Используем только имя файла
         const insertValues = [
             req.body.username,
             hashedPassword,
             req.body.email,
             req.body.role || 'user',
-            'default.jpg',
+            defaultAvatar,
             req.body.phone || null,
             req.body.address || null
         ];
@@ -128,6 +133,7 @@ app.post('/regpage', async (req, res) => {
                 } else if (!results || results.length === 0) {
                     reject(new Error('Пользователь не найден после создания'));
                 } else {
+                    console.log('Полученные данные пользователя:', results[0]);
                     resolve(results[0]);
                 }
             });
@@ -159,7 +165,7 @@ app.post('/regpage', async (req, res) => {
                 role: newUser.role,
                 phone: newUser.phone,
                 address: newUser.address,
-                avatar: newUser.avatar
+                avatar: newUser.avatar || defaultAvatar
             },
             token
         };
