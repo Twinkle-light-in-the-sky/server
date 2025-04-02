@@ -71,7 +71,7 @@ app.post('/regpage', async (req, res) => {
             });
         });
 
-        if (existingUser.length > 0) {
+        if (existingUser && existingUser.length > 0) {
             console.log('Пользователь уже существует:', existingUser[0]);
             return res.status(400).json({
                 success: false,
@@ -113,6 +113,10 @@ app.post('/regpage', async (req, res) => {
 
         console.log('Результат вставки:', insertResult);
 
+        if (!insertResult || !insertResult.insertId) {
+            throw new Error('Не удалось получить ID созданного пользователя');
+        }
+
         // Получаем данные созданного пользователя
         console.log('Получение данных созданного пользователя с ID:', insertResult.insertId);
         
@@ -121,6 +125,8 @@ app.post('/regpage', async (req, res) => {
                 if (err) {
                     console.error("Ошибка при получении данных пользователя:", err);
                     reject(err);
+                } else if (!results || results.length === 0) {
+                    reject(new Error('Пользователь не найден после создания'));
                 } else {
                     resolve(results[0]);
                 }
@@ -164,7 +170,7 @@ app.post('/regpage', async (req, res) => {
         console.error('Ошибка при регистрации:', error);
         res.status(500).json({
             success: false,
-            error: 'Ошибка при регистрации пользователя'
+            error: error.message || 'Ошибка при регистрации пользователя'
         });
     }
 });
