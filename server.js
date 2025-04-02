@@ -13,7 +13,7 @@ const { bucket } = require('./config/firebase');
 const axios = require('axios');
 const app = express();
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     credentials: true,
@@ -69,6 +69,26 @@ const upload = multer({
         cb(null, true);
     }
 });
+
+// Middleware для проверки JWT токена
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    console.log('Токен отсутствует в заголовке');
+    return res.status(401).json({ message: 'Токен не найден' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    if (err) {
+      console.log('Ошибка верификации токена:', err);
+      return res.status(403).json({ message: 'Недействительный токен' });
+    }
+    req.user = user;
+    next();
+  });
+};
 
 app.post('/regpage', async (req, res) => {
     try {
