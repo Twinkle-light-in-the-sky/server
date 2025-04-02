@@ -13,11 +13,16 @@ const { bucket } = require('./config/firebase');
 const axios = require('axios');
 const app = express();
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'http://barsikec.beget.tech', 'https://barsikec.beget.tech'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: true,
+    maxAge: 86400 // 24 часа
 }));
+
+// Добавляем middleware для обработки preflight запросов
+app.options('*', cors());
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(bodyParser.json());
@@ -609,6 +614,16 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
     console.error('Ошибка при обновлении профиля:', error);
     res.status(500).json({ message: 'Ошибка сервера при обновлении профиля' });
   }
+});
+
+// Добавляем обработку ошибок
+app.use((err, req, res, next) => {
+    console.error('Ошибка сервера:', err);
+    res.status(500).json({
+        success: false,
+        message: 'Внутренняя ошибка сервера',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
 });
 
 const PORT = process.env.PORT || 3001;
