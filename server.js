@@ -42,10 +42,23 @@ app.post('/auth', async (req, res) => {
         const { username, password, email, role, phone, address, action } = req.body;
         console.log("Полученные данные:", req.body);
 
+        // Проверяем наличие action
+        if (!action) {
+            return res.status(400).json({ error: 'Не указано действие (register/login)' });
+        }
+
         // Если это регистрация
         if (action === 'register') {
+            // Проверяем обязательные поля
             if (!username || !email || !password) {
-                return res.status(400).json({ error: 'Все обязательные поля должны быть заполнены' });
+                return res.status(400).json({ 
+                    error: 'Все обязательные поля должны быть заполнены',
+                    details: {
+                        username: !username ? 'Имя пользователя обязательно' : null,
+                        email: !email ? 'Email обязателен' : null,
+                        password: !password ? 'Пароль обязателен' : null
+                    }
+                });
             }
 
             const defaultAvatarPath = 'default.jpg';
@@ -77,7 +90,7 @@ app.post('/auth', async (req, res) => {
 
             // Создаем пользователя
             const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar, phone, address) VALUES (?, ?, ?, ?, ?, ?, ?)';
-            await new Promise((resolve, reject) => {
+            const insertResult = await new Promise((resolve, reject) => {
                 db.query(insertUserQuery, [
                     username, 
                     hashedPassword, 
@@ -96,9 +109,12 @@ app.post('/auth', async (req, res) => {
                 });
             });
 
-            // После успешной регистрации создаем токен и возвращаем данные пользователя
+            // Получаем ID нового пользователя
+            const userId = insertResult.insertId;
+
+            // Создаем токен
             const token = jwt.sign(
-                { username, role: role || 'user' },
+                { id: userId, username, role: role || 'user' },
                 process.env.JWT_SECRET || 'your-secret-key',
                 { expiresIn: '24h' }
             );
@@ -107,12 +123,13 @@ app.post('/auth', async (req, res) => {
                 message: 'Пользователь успешно зарегистрирован',
                 token,
                 user: {
+                    id: userId,
                     username,
                     email,
                     role: role || 'user',
                     avatar: defaultAvatarPath,
-                    phone,
-                    address
+                    phone: phone || null,
+                    address: address || null
                 }
             });
         }
@@ -120,7 +137,11 @@ app.post('/auth', async (req, res) => {
         else if (action === 'login') {
             if (!username || !password) {
                 return res.status(400).json({ 
-                    error: 'Пожалуйста, введите логин и пароль' 
+                    error: 'Пожалуйста, введите логин и пароль',
+                    details: {
+                        username: !username ? 'Имя пользователя обязательно' : null,
+                        password: !password ? 'Пароль обязателен' : null
+                    }
                 });
             }
 
@@ -182,7 +203,7 @@ app.post('/auth', async (req, res) => {
         }
         // Если действие не указано
         else {
-            return res.status(400).json({ error: 'Не указано действие (register/login)' });
+            return res.status(400).json({ error: 'Неверное действие. Используйте register или login' });
         }
     } catch (error) {
         console.error('Ошибка:', error);
