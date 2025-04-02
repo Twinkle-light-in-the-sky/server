@@ -12,9 +12,15 @@ require('dotenv').config();
 
 // Проверяем наличие необходимых переменных окружения
 console.log('Проверка переменных окружения:');
-console.log('IMGBB_API_KEY:', process.env.IMGBB_API_KEY ? 'Присутствует' : 'Отсутствует');
+console.log('IMGBB_API_KEY:', process.env.IMGBB_API_KEY || 'Отсутствует');
 console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Присутствует' : 'Отсутствует');
 console.log('DB_HOST:', process.env.DB_HOST ? 'Присутствует' : 'Отсутствует');
+
+// Устанавливаем значение IMGBB_API_KEY напрямую, если оно отсутствует в .env
+if (!process.env.IMGBB_API_KEY) {
+  process.env.IMGBB_API_KEY = '194fcc07333e5f7b8036a78bb24a89b0';
+  console.log('IMGBB_API_KEY установлен напрямую');
+}
 
 const multer = require('multer');
 const https = require('https');
