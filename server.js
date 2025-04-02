@@ -608,8 +608,43 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
       });
     });
 
+    // Получаем обновленные данные пользователя
+    const [updatedUser] = await new Promise((resolve, reject) => {
+      db.query('SELECT * FROM user WHERE id = ?', [userId], (error, results) => {
+        if (error) {
+          console.error('Ошибка при получении обновленных данных:', error);
+          reject(error);
+        }
+        resolve(results);
+      });
+    });
+
+    // Создаем новый токен
+    const newToken = jwt.sign(
+      { 
+        id: updatedUser.id,
+        username: updatedUser.username,
+        role: updatedUser.role
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
     console.log('Профиль успешно обновлен для пользователя:', userId);
-    res.json({ message: 'Профиль успешно обновлен' });
+    res.json({ 
+      success: true,
+      message: 'Профиль успешно обновлен',
+      user: {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        avatar: updatedUser.avatar || 'default.jpg',
+        phone: updatedUser.phone,
+        address: updatedUser.address
+      },
+      token: newToken
+    });
   } catch (error) {
     console.error('Ошибка при обновлении профиля:', error);
     res.status(500).json({ message: 'Ошибка сервера при обновлении профиля' });
