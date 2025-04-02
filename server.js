@@ -492,99 +492,122 @@ app.post('/upload-avatar', authenticateToken, upload.single('avatar'), async (re
 // Эндпоинт для обновления профиля
 app.put('/updateprofile', authenticateToken, async (req, res) => {
   try {
-    const { username, email, phone, address, password, avatar } = req.body;
+    console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
+    const { currentPassword, password, username, email, phone, address } = req.body;
 
-    // Проверяем, не занят ли username другим пользователем
-    if (username) {
-      const existingUsername = await new Promise((resolve, reject) => {
-        db.query('SELECT id FROM user WHERE username = ? AND id != ?', [username, userId], (err, results) => {
-          if (err) reject(err);
-          resolve(results);
-        });
+    // Получаем текущего пользователя
+    const [user] = await new Promise((resolve, reject) => {
+      db.query('SELECT * FROM user WHERE id = ?', [userId], (error, results) => {
+        if (error) {
+          console.error('Ошибка при получении пользователя:', error);
+          reject(error);
+        }
+        resolve(results);
       });
+    });
 
-      if (existingUsername.length > 0) {
-        return res.status(400).json({ message: 'Это имя пользователя уже используется' });
+    if (!user) {
+      console.log('Пользователь не найден:', userId);
+      return res.status(404).json({ message: 'Пользователь не найден' });
+    }
+
+    // Если есть текущий пароль, проверяем его
+    if (currentPassword) {
+      const validPassword = await bcrypt.compare(currentPassword, user.password);
+      if (!validPassword) {
+        console.log('Неверный текущий пароль для пользователя:', userId);
+        return res.status(400).json({ message: 'Неверный текущий пароль' });
       }
     }
 
-    // Проверяем, не занят ли email другим пользователем
-    if (email) {
-      const existingEmail = await new Promise((resolve, reject) => {
-        db.query('SELECT id FROM user WHERE email = ? AND id != ?', [email, userId], (err, results) => {
-          if (err) reject(err);
-          resolve(results);
-        });
-      });
-
-      if (existingEmail.length > 0) {
-        return res.status(400).json({ message: 'Этот email уже используется' });
-      }
-    }
-
-    // Формируем SQL запрос
+    // Формируем SQL запрос для обновления
     let updateQuery = 'UPDATE user SET ';
     const updateValues = [];
-    
-    if (username) {
+
+    if (username && username !== user.username) {
+      // Проверяем уникальность username
+      const [existingUser] = await new Promise((resolve, reject) => {
+        db.query('SELECT id FROM user WHERE username = ? AND id != ?', [username, userId], (error, results) => {
+          if (error) {
+            console.error('Ошибка при проверке username:', error);
+            reject(error);
+          }
+          resolve(results);
+        });
+      });
+
+      if (existingUser) {
+        console.log('Username уже занят:', username);
+        return res.status(400).json({ message: 'Это имя пользователя уже занято' });
+      }
+
       updateQuery += 'username = ?, ';
       updateValues.push(username);
     }
-    
-    if (email) {
+
+    if (email && email !== user.email) {
+      // Проверяем уникальность email
+      const [existingUser] = await new Promise((resolve, reject) => {
+        db.query('SELECT id FROM user WHERE email = ? AND id != ?', [email, userId], (error, results) => {
+          if (error) {
+            console.error('Ошибка при проверке email:', error);
+            reject(error);
+          }
+          resolve(results);
+        });
+      });
+
+      if (existingUser) {
+        console.log('Email уже используется:', email);
+        return res.status(400).json({ message: 'Этот email уже используется' });
+      }
+
       updateQuery += 'email = ?, ';
       updateValues.push(email);
     }
-    
-    if (phone !== undefined) {
-      updateQuery += 'phone = ?, ';
-      updateValues.push(phone);
-    }
-    
-    if (address !== undefined) {
-      updateQuery += 'address = ?, ';
-      updateValues.push(address);
-    }
-    
-    if (avatar) {
-      updateQuery += 'avatar = ?, ';
-      updateValues.push(avatar);
-    }
-    
+
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
       updateQuery += 'password = ?, ';
       updateValues.push(hashedPassword);
     }
-    
-    // Убираем последнюю запятую и пробел
+
+    if (phone) {
+      updateQuery += 'phone = ?, ';
+      updateValues.push(phone);
+    }
+
+    if (address) {
+      updateQuery += 'address = ?, ';
+      updateValues.push(address);
+    }
+
+    // Удаляем последнюю запятую и пробел
     updateQuery = updateQuery.slice(0, -2);
-    
+
     // Добавляем условие WHERE
     updateQuery += ' WHERE id = ?';
     updateValues.push(userId);
 
+    console.log('Выполняем обновление:', { query: updateQuery, values: updateValues });
+
     // Выполняем обновление
     await new Promise((resolve, reject) => {
-      db.query(updateQuery, updateValues, (err) => {
-        if (err) reject(err);
+      db.query(updateQuery, updateValues, (error) => {
+        if (error) {
+          console.error('Ошибка при обновлении профиля:', error);
+          reject(error);
+        }
         resolve();
       });
     });
 
-    // Получаем обновленные данные пользователя
-    const updatedUser = await new Promise((resolve, reject) => {
-      db.query('SELECT id, username, email, role, phone, address, avatar FROM user WHERE id = ?', [userId], (err, results) => {
-        if (err) reject(err);
-        resolve(results[0]);
-      });
-    });
-
-    res.json(updatedUser);
+    console.log('Профиль успешно обновлен для пользователя:', userId);
+    res.json({ message: 'Профиль успешно обновлен' });
   } catch (error) {
     console.error('Ошибка при обновлении профиля:', error);
-    res.status(500).json({ message: 'Ошибка при обновлении профиля' });
+    res.status(500).json({ message: 'Ошибка сервера при обновлении профиля' });
   }
 });
 
