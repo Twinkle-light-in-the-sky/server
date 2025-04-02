@@ -7,6 +7,10 @@ const bcrypt = require('bcrypt');
 const path = require('path');
 require('./queries/databaseQueries');
 require('dotenv').config();
+const { cloudinary, upload } = require('./config/cloudinary');
+const multer = require('multer');
+const { bucket } = require('./config/firebase');
+const axios = require('axios');
 const app = express();
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'http://barsikec.beget.tech', 'https://barsikec.beget.tech'],
@@ -36,6 +40,30 @@ app.use('/uploads/services-bg', express.static(servicesBgPath));
 const projectsBgPath = path.join(__dirname, 'uploads', 'projects-bg');
 app.use('/uploads/projects-bg', express.static(projectsBgPath));
 
+// Настройка multer для сохранения файлов
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, path.join(__dirname, 'uploads', 'avatars'));
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, req.user.id + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB
+    },
+    fileFilter: function (req, file, cb) {
+        // Проверяем тип файла
+        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+            return cb(new Error('Только изображения разрешены!'), false);
+        }
+        cb(null, true);
+    }
+});
 
 app.post('/regpage', async (req, res) => {
     try {
@@ -419,7 +447,146 @@ app.get('/orders', async (req, res) => {
     }
 });
 
+// Эндпоинт для загрузки аватара
+app.post('/upload-avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                error: 'Файл не был загружен'
+            });
+        }
 
+        // Получаем относительный путь к файлу
+        const avatarPath = path.join('uploads', 'avatars', req.file.filename);
+
+        // Обновляем аватар пользователя в базе данных
+        const updateResult = await new Promise((resolve, reject) => {
+            db.query(
+                'UPDATE user SET avatar = ? WHERE id = ?',
+                [req.file.filename, req.user.id],
+                (err, results) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(results);
+                    }
+                }
+            );
+        });
+
+        res.json({
+            success: true,
+            message: 'Аватар успешно обновлен',
+            avatar: avatarPath
+        });
+    } catch (error) {
+        console.error('Ошибка при загрузке аватара:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при загрузке аватара'
+        });
+    }
+});
+
+// Эндпоинт для обновления профиля
+app.put('/updateprofile', authenticateToken, async (req, res) => {
+  try {
+    const { username, email, phone, address, password, avatar } = req.body;
+    const userId = req.user.id;
+
+    // Проверяем, не занят ли username другим пользователем
+    if (username) {
+      const existingUsername = await new Promise((resolve, reject) => {
+        db.query('SELECT id FROM user WHERE username = ? AND id != ?', [username, userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
+      });
+
+      if (existingUsername.length > 0) {
+        return res.status(400).json({ message: 'Это имя пользователя уже используется' });
+      }
+    }
+
+    // Проверяем, не занят ли email другим пользователем
+    if (email) {
+      const existingEmail = await new Promise((resolve, reject) => {
+        db.query('SELECT id FROM user WHERE email = ? AND id != ?', [email, userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
+      });
+
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ message: 'Этот email уже используется' });
+      }
+    }
+
+    // Формируем SQL запрос
+    let updateQuery = 'UPDATE user SET ';
+    const updateValues = [];
+    
+    if (username) {
+      updateQuery += 'username = ?, ';
+      updateValues.push(username);
+    }
+    
+    if (email) {
+      updateQuery += 'email = ?, ';
+      updateValues.push(email);
+    }
+    
+    if (phone !== undefined) {
+      updateQuery += 'phone = ?, ';
+      updateValues.push(phone);
+    }
+    
+    if (address !== undefined) {
+      updateQuery += 'address = ?, ';
+      updateValues.push(address);
+    }
+    
+    if (avatar) {
+      updateQuery += 'avatar = ?, ';
+      updateValues.push(avatar);
+    }
+    
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateQuery += 'password = ?, ';
+      updateValues.push(hashedPassword);
+    }
+    
+    // Убираем последнюю запятую и пробел
+    updateQuery = updateQuery.slice(0, -2);
+    
+    // Добавляем условие WHERE
+    updateQuery += ' WHERE id = ?';
+    updateValues.push(userId);
+
+    // Выполняем обновление
+    await new Promise((resolve, reject) => {
+      db.query(updateQuery, updateValues, (err) => {
+        if (err) reject(err);
+        resolve();
+      });
+    });
+
+    // Получаем обновленные данные пользователя
+    const updatedUser = await new Promise((resolve, reject) => {
+      db.query('SELECT id, username, email, role, phone, address, avatar FROM user WHERE id = ?', [userId], (err, results) => {
+        if (err) reject(err);
+        resolve(results[0]);
+      });
+    });
+
+    res.json(updatedUser);
+  } catch (error) {
+    console.error('Ошибка при обновлении профиля:', error);
+    res.status(500).json({ message: 'Ошибка при обновлении профиля' });
+  }
+});
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
