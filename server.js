@@ -522,7 +522,7 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
     const base64Image = req.body.image.split(',')[1];
     
     // Загружаем изображение на ImgBB
-    const imgbbApiKey = process.env.REACT_APP_IMGBB_API_KEY;
+    const imgbbApiKey = process.env.IMGBB_API_KEY;
     
     if (!imgbbApiKey) {
       console.error('Отсутствует ключ ImgBB API');
