@@ -79,7 +79,7 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({
+const localUpload = multer({
     storage: storage,
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB
@@ -510,7 +510,7 @@ app.get('/orders', async (req, res) => {
 });
 
 // Эндпоинт для загрузки аватара
-app.post('/upload-avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
+app.post('/upload-avatar', authenticateToken, localUpload.single('avatar'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({

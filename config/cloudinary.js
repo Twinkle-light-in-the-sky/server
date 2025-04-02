@@ -20,9 +20,9 @@ const storage = new CloudinaryStorage({
 });
 
 // Создаем middleware для загрузки
-const upload = multer({ storage: storage });
+const cloudinaryUpload = multer({ storage: storage });
 
 module.exports = {
     cloudinary,
-    upload
+    upload: cloudinaryUpload
 }; 
