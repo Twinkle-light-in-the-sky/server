@@ -6,7 +6,16 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const path = require('path');
 require('./queries/databaseQueries');
-require('dotenv').config({ path: '../.env' });
+
+// Загружаем переменные окружения
+require('dotenv').config();
+
+// Проверяем наличие необходимых переменных окружения
+console.log('Проверка переменных окружения:');
+console.log('IMGBB_API_KEY:', process.env.IMGBB_API_KEY ? 'Присутствует' : 'Отсутствует');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Присутствует' : 'Отсутствует');
+console.log('DB_HOST:', process.env.DB_HOST ? 'Присутствует' : 'Отсутствует');
+
 const multer = require('multer');
 const https = require('https');
 const fs = require('fs');
@@ -537,23 +546,20 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
       });
     }
     
-    const formData = {
-      key: imgbbApiKey,
-      image: base64Image,
-      name: `avatar-${req.user.id}-${Date.now()}`
-    };
+    const formData = new URLSearchParams();
+    formData.append('key', imgbbApiKey);
+    formData.append('image', base64Image);
+    formData.append('name', `avatar-${req.user.id}-${Date.now()}`);
     
     console.log('Отправка запроса к ImgBB API');
     const imgbbResponse = await new Promise((resolve, reject) => {
-      const data = JSON.stringify(formData);
-      
       const options = {
         hostname: 'api.imgbb.com',
         path: '/1/upload',
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': data.length
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': formData.toString().length
         }
       };
       
@@ -581,7 +587,7 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
         reject(error);
       });
       
-      req.write(data);
+      req.write(formData.toString());
       req.end();
     });
     
