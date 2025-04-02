@@ -231,18 +231,31 @@ app.get('/service', async (req, res) => {
 
 app.get('/projects', async (req, res) => {
     try {
-        const getServicesQuery = 'SELECT id, projects_title, projects_description, projects_background FROM projects';
-        db.query(getServicesQuery, (err, results) => {
-            if (err) {
-                console.error("Ошибка при получении данных проектов:", err);
-                return res.status(500).json({ error: 'Ошибка при получении данных' });
-            }
-            res.setHeader('Content-Type', 'application/json');
-            res.json(results);
+        console.log('Получен запрос на получение проектов');
+        
+        const projects = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM projects ORDER BY id ASC', (err, results) => {
+                if (err) {
+                    console.error('Ошибка при получении проектов:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+
+        console.log('Найдено проектов:', projects.length);
+        
+        res.json({
+            success: true,
+            data: projects
         });
     } catch (error) {
-        console.error("Ошибка при обработке запроса /projects:", error);
-        res.status(500).json({ error: 'Ошибка сервера' });
+        console.error('Ошибка при получении проектов:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при получении проектов'
+        });
     }
 });
 
