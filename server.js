@@ -551,7 +551,7 @@ app.put('/api/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
-    const { currentPassword, password, username, email, phone, address } = req.body;
+    const { currentPassword, password, username, email, phone, address, avatar } = req.body;
 
     // Получаем текущего пользователя
     const [user] = await new Promise((resolve, reject) => {
@@ -638,6 +638,12 @@ app.put('/api/updateprofile', authenticateToken, async (req, res) => {
     if (address) {
       updateQuery += 'address = ?, ';
       updateValues.push(address);
+    }
+
+    // Если есть URL аватара, добавляем его в запрос
+    if (avatar) {
+      updateQuery += 'avatar = ?, ';
+      updateValues.push(avatar);
     }
 
     // Удаляем последнюю запятую и пробел
