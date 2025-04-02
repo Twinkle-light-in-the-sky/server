@@ -7,10 +7,7 @@ const bcrypt = require('bcrypt');
 const path = require('path');
 require('./queries/databaseQueries');
 require('dotenv').config();
-const { cloudinary, upload } = require('./config/cloudinary');
 const multer = require('multer');
-const { bucket } = require('./config/firebase');
-const axios = require('axios');
 const app = express();
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app'],
@@ -552,11 +549,11 @@ app.post('/upload-avatar', authenticateToken, localUpload.single('avatar'), asyn
 });
 
 // Эндпоинт для обновления профиля
-app.put('/updateprofile', authenticateToken, async (req, res) => {
+app.put('/api/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
-    const { currentPassword, password, username, email, phone, address, avatar } = req.body;
+    const { username, email, phone, address, avatar } = req.body;
 
     // Получаем текущего пользователя
     const [user] = await new Promise((resolve, reject) => {
@@ -572,15 +569,6 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
     if (!user) {
       console.log('Пользователь не найден:', userId);
       return res.status(404).json({ message: 'Пользователь не найден' });
-    }
-
-    // Если есть текущий пароль, проверяем его
-    if (currentPassword) {
-      const validPassword = await bcrypt.compare(currentPassword, user.password);
-      if (!validPassword) {
-        console.log('Неверный текущий пароль для пользователя:', userId);
-        return res.status(400).json({ message: 'Неверный текущий пароль' });
-      }
     }
 
     // Формируем SQL запрос для обновления
@@ -621,18 +609,12 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
       });
 
       if (existingUser) {
-        console.log('Email уже используется:', email);
-        return res.status(400).json({ message: 'Этот email уже используется' });
+        console.log('Email уже занят:', email);
+        return res.status(400).json({ message: 'Этот email уже занят' });
       }
 
       updateQuery += 'email = ?, ';
       updateValues.push(email);
-    }
-
-    if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      updateQuery += 'password = ?, ';
-      updateValues.push(hashedPassword);
     }
 
     if (phone) {
@@ -645,7 +627,6 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
       updateValues.push(address);
     }
 
-    // Если есть URL аватара, добавляем его в запрос
     if (avatar) {
       updateQuery += 'avatar = ?, ';
       updateValues.push(avatar);
@@ -658,56 +639,41 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
     updateQuery += ' WHERE id = ?';
     updateValues.push(userId);
 
-    console.log('Выполняем обновление:', { query: updateQuery, values: updateValues });
+    console.log('SQL запрос:', updateQuery);
+    console.log('Значения:', updateValues);
 
-    // Выполняем обновление
+    // Выполняем запрос
     await new Promise((resolve, reject) => {
-      db.query(updateQuery, updateValues, (error) => {
+      db.query(updateQuery, updateValues, (error, results) => {
         if (error) {
-          console.error('Ошибка при обновлении профиля:', error);
-          reject(error);
-        }
-        resolve();
-      });
-    });
-
-    // Получаем обновленные данные пользователя
-    const [updatedUser] = await new Promise((resolve, reject) => {
-      db.query('SELECT * FROM user WHERE id = ?', [userId], (error, results) => {
-        if (error) {
-          console.error('Ошибка при получении обновленных данных:', error);
+          console.error('Ошибка при обновлении пользователя:', error);
           reject(error);
         }
         resolve(results);
       });
     });
 
-    // Создаем новый токен
-    const newToken = jwt.sign(
-      { 
-        id: updatedUser.id,
-        username: updatedUser.username,
-        role: updatedUser.role
-      },
+    // Получаем обновленного пользователя
+    const [updatedUser] = await new Promise((resolve, reject) => {
+      db.query('SELECT id, username, email, phone, address, avatar, role FROM user WHERE id = ?', [userId], (error, results) => {
+        if (error) {
+          console.error('Ошибка при получении обновленного пользователя:', error);
+          reject(error);
+        }
+        resolve(results);
+      });
+    });
+
+    console.log('Пользователь успешно обновлен:', updatedUser);
+
+    // Генерируем новый токен
+    const token = jwt.sign(
+      { id: updatedUser.id, username: updatedUser.username, role: updatedUser.role },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
 
-    console.log('Профиль успешно обновлен для пользователя:', userId);
-    res.json({ 
-      success: true,
-      message: 'Профиль успешно обновлен',
-      user: {
-        id: updatedUser.id,
-        username: updatedUser.username,
-        email: updatedUser.email,
-        role: updatedUser.role,
-        avatar: updatedUser.avatar || 'default.jpg',
-        phone: updatedUser.phone,
-        address: updatedUser.address
-      },
-      token: newToken
-    });
+    res.json({ user: updatedUser, token });
   } catch (error) {
     console.error('Ошибка при обновлении профиля:', error);
     res.status(500).json({ message: 'Ошибка сервера при обновлении профиля' });
