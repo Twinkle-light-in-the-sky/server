@@ -107,11 +107,11 @@ app.post('/logpage', async (req, res) => {
 
 app.post('/regpage', async (req, res) => {
     try {
-        const { username, email, password } = req.body;
+        const { username, email, password, role, phone, address } = req.body;
         console.log("Полученные данные:", req.body);
 
         if (!username || !email || !password) {
-            return res.status(400).json({ error: 'Все поля должны быть заполнены' });
+            return res.status(400).json({ error: 'Все обязательные поля должны быть заполнены' });
         }
 
         const defaultAvatarPath = 'default.jpg';
@@ -140,12 +140,19 @@ app.post('/regpage', async (req, res) => {
 
         // Хешируем пароль
         const hashedPassword = await bcrypt.hash(password, 10);
-        const role = 0;
 
-        // Создаем пользователя
-        const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar) VALUES (?, ?, ?, ?, ?)';
+        // Создаем пользователя с новыми полями
+        const insertUserQuery = 'INSERT INTO user (username, password, email, role, avatar, phone, address) VALUES (?, ?, ?, ?, ?, ?, ?)';
         await new Promise((resolve, reject) => {
-            db.query(insertUserQuery, [username, hashedPassword, email, role, defaultAvatarPath], (err, results) => {
+            db.query(insertUserQuery, [
+                username, 
+                hashedPassword, 
+                email, 
+                role || 'user', // По умолчанию роль 'user'
+                defaultAvatarPath,
+                phone || null,
+                address || null
+            ], (err, results) => {
                 if (err) {
                     console.error("Ошибка при вставке пользователя:", err);
                     reject(err);
