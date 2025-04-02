@@ -131,83 +131,63 @@ app.post('/regpage', async (req, res) => {
 
 app.post('/logpage', async (req, res) => {
     try {
-        console.log('Получен запрос на авторизацию:', req.body);
-        
-        // Проверяем обязательные поля
-        if (!req.body.username || !req.body.password) {
-            return res.status(400).json({
-                success: false,
-                error: 'Пожалуйста, введите имя пользователя и пароль'
+        const { username, password } = req.body;
+        console.log('Получен запрос на авторизацию:', { username });
+
+        // Поиск пользователя
+        const [user] = await db.query('SELECT * FROM user WHERE username = ?', [username]);
+        console.log('Найден пользователь:', user[0]);
+
+        if (!user || user.length === 0) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Пользователь не найден' 
             });
         }
 
-        // Ищем пользователя
-        const checkUserQuery = 'SELECT id, username, email, password, role, avatar, phone, address FROM user WHERE username = ?';
-        console.log("Выполняется запрос:", checkUserQuery, "с параметром:", req.body.username);
-
-        const results = await new Promise((resolve, reject) => {
-            db.query(checkUserQuery, [req.body.username], (err, results) => {
-                if (err) {
-                    console.error('Ошибка при выполнении запроса:', err);
-                    reject(err);
-                } else {
-                    console.log("Результаты запроса:", results);
-                    resolve(results);
-                }
-            });
-        });
-
-        if (results.length === 0) {
-            console.log("Пользователь не найден:", req.body.username);
-            return res.status(401).json({
-                success: false,
-                error: 'Неверное имя пользователя или пароль'
-            });
-        }
-
-        const user = results[0];
-        console.log('Найден пользователь:', user);
-
-        // Проверяем пароль
-        const validPassword = await bcrypt.compare(req.body.password, user.password);
+        // Проверка пароля
+        const validPassword = await bcrypt.compare(password, user[0].password);
         if (!validPassword) {
-            console.log("Неверный пароль для пользователя:", req.body.username);
-            return res.status(401).json({
-                success: false,
-                error: 'Неверное имя пользователя или пароль'
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Неверный пароль' 
             });
         }
 
-        // Создаем токен
+        // Создание токена
         const token = jwt.sign(
             { 
-                id: user.id,
-                username: user.username,
-                role: user.role
+                id: user[0].id, 
+                username: user[0].username, 
+                role: user[0].role 
             },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '24h' }
         );
 
-        // Отправляем ответ
-        res.json({
+        // Формирование ответа
+        const response = {
             success: true,
             message: 'Вход выполнен успешно',
+            token,
             user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                role: user.role,
-                phone: user.phone,
-                address: user.address
-            },
-            token
-        });
+                id: user[0].id,
+                username: user[0].username,
+                email: user[0].email,
+                role: user[0].role,
+                avatar: user[0].avatar || 'default.jpg',
+                phone: user[0].phone,
+                address: user[0].address
+            }
+        };
+
+        console.log('Отправляем ответ:', response);
+        res.json(response);
     } catch (error) {
         console.error('Ошибка при авторизации:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка при авторизации'
+        res.status(500).json({ 
+            success: false, 
+            message: 'Ошибка сервера при авторизации' 
         });
     }
 });
