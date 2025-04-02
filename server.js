@@ -552,7 +552,7 @@ app.post('/upload-avatar', authenticateToken, upload.single('avatar'), async (re
 });
 
 // Эндпоинт для обновления профиля
-app.put('/api/updateprofile', authenticateToken, async (req, res) => {
+app.put('/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
