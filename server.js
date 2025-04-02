@@ -548,12 +548,12 @@ app.post('/upload-avatar', authenticateToken, localUpload.single('avatar'), asyn
     }
 });
 
-// Эндпоинт для обновления профиля
-app.put('/api/updateprofile', authenticateToken, async (req, res) => {
+// Эндпоинт для обновления профиля пользователя
+app.put('/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
-    const { username, email, phone, address, avatar } = req.body;
+    const { username } = req.body;
 
     // Получаем текущего пользователя
     const [user] = await new Promise((resolve, reject) => {
@@ -571,12 +571,8 @@ app.put('/api/updateprofile', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Пользователь не найден' });
     }
 
-    // Формируем SQL запрос для обновления
-    let updateQuery = 'UPDATE user SET ';
-    const updateValues = [];
-
+    // Проверяем уникальность username
     if (username && username !== user.username) {
-      // Проверяем уникальность username
       const [existingUser] = await new Promise((resolve, reject) => {
         db.query('SELECT id FROM user WHERE username = ? AND id != ?', [username, userId], (error, results) => {
           if (error) {
@@ -592,66 +588,17 @@ app.put('/api/updateprofile', authenticateToken, async (req, res) => {
         return res.status(400).json({ message: 'Это имя пользователя уже занято' });
       }
 
-      updateQuery += 'username = ?, ';
-      updateValues.push(username);
-    }
-
-    if (email && email !== user.email) {
-      // Проверяем уникальность email
-      const [existingUser] = await new Promise((resolve, reject) => {
-        db.query('SELECT id FROM user WHERE email = ? AND id != ?', [email, userId], (error, results) => {
+      // Обновляем username
+      await new Promise((resolve, reject) => {
+        db.query('UPDATE user SET username = ? WHERE id = ?', [username, userId], (error, results) => {
           if (error) {
-            console.error('Ошибка при проверке email:', error);
+            console.error('Ошибка при обновлении username:', error);
             reject(error);
           }
           resolve(results);
         });
       });
-
-      if (existingUser) {
-        console.log('Email уже занят:', email);
-        return res.status(400).json({ message: 'Этот email уже занят' });
-      }
-
-      updateQuery += 'email = ?, ';
-      updateValues.push(email);
     }
-
-    if (phone) {
-      updateQuery += 'phone = ?, ';
-      updateValues.push(phone);
-    }
-
-    if (address) {
-      updateQuery += 'address = ?, ';
-      updateValues.push(address);
-    }
-
-    if (avatar) {
-      updateQuery += 'avatar = ?, ';
-      updateValues.push(avatar);
-    }
-
-    // Удаляем последнюю запятую и пробел
-    updateQuery = updateQuery.slice(0, -2);
-
-    // Добавляем условие WHERE
-    updateQuery += ' WHERE id = ?';
-    updateValues.push(userId);
-
-    console.log('SQL запрос:', updateQuery);
-    console.log('Значения:', updateValues);
-
-    // Выполняем запрос
-    await new Promise((resolve, reject) => {
-      db.query(updateQuery, updateValues, (error, results) => {
-        if (error) {
-          console.error('Ошибка при обновлении пользователя:', error);
-          reject(error);
-        }
-        resolve(results);
-      });
-    });
 
     // Получаем обновленного пользователя
     const [updatedUser] = await new Promise((resolve, reject) => {
