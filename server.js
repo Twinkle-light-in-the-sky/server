@@ -352,10 +352,16 @@ app.get('/service', async (req, res) => {
                 console.error("Ошибка при получении данных услуг:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
+            // Убедимся, что все URL изображений корректные
+            const servicesWithUrls = results.map(service => ({
+                ...service,
+                background_image: service.background_image // URL уже с ImgBB
+            }));
+            
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
             res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-            res.json(results);
+            res.json(servicesWithUrls);
         });
     } catch (error) {
         console.error("Ошибка при обработке запроса /service:", error);
@@ -369,7 +375,7 @@ app.get('/projects', async (req, res) => {
         
         const projects = await new Promise((resolve, reject) => {
             db.query('SELECT * FROM projects ORDER BY id ASC', (err, results) => {
-                if (err) {
+            if (err) {
                     console.error('Ошибка при получении проектов:', err);
                     reject(err);
                 } else {
@@ -778,6 +784,56 @@ app.use((err, req, res, next) => {
         error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
 });
+
+// Добавляем функцию для загрузки изображения услуги на ImgBB
+const uploadServiceImageToImgBB = async (imageBase64) => {
+    const imgbbApiKey = process.env.IMGBB_API_KEY;
+    
+    if (!imgbbApiKey) {
+        throw new Error('ImgBB API key не настроен');
+    }
+
+    const formData = new URLSearchParams();
+    formData.append('key', imgbbApiKey);
+    formData.append('image', imageBase64);
+    
+    return new Promise((resolve, reject) => {
+        const options = {
+            hostname: 'api.imgbb.com',
+            path: '/1/upload',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': formData.toString().length
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let data = '';
+            
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+            
+            res.on('end', () => {
+                try {
+                    const response = JSON.parse(data);
+                    if (response.success) {
+                        resolve(response.data.url);
+                    } else {
+                        reject(new Error('Ошибка загрузки изображения'));
+                    }
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        });
+
+        req.on('error', reject);
+        req.write(formData.toString());
+        req.end();
+    });
+};
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
