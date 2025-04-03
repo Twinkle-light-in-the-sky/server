@@ -934,6 +934,26 @@ app.post('/services', serviceUpload.single('background_image'), async (req, res)
     }
 });
 
+// Обновление названия услуги
+app.put('/services/:id/title', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title } = req.body;
+        
+        const updateQuery = 'UPDATE services SET title = ? WHERE id = ?';
+        db.query(updateQuery, [title, id], (err, result) => {
+            if (err) {
+                console.error("Ошибка при обновлении названия услуги:", err);
+                return res.status(500).json({ error: 'Ошибка при обновлении названия услуги' });
+            }
+            res.json({ id, title });
+        });
+    } catch (error) {
+        console.error("Ошибка при обработке запроса /services/:id/title:", error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
