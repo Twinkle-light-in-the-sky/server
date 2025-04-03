@@ -950,32 +950,37 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
         }
 
         // Формируем SQL запрос
-        let updateQuery = 'UPDATE services SET ';
+        const updateFields = [];
         const updateValues = [];
         
         if (title) {
-            updateQuery += 'title = ?';
+            updateFields.push('title = ?');
             updateValues.push(title);
         }
         
         if (description) {
-            if (updateValues.length > 0) {
-                updateQuery += ', ';
-            }
-            updateQuery += 'description = ?';
+            updateFields.push('description = ?');
             updateValues.push(description);
         }
         
         if (imageUrl) {
-            if (updateValues.length > 0) {
-                updateQuery += ', ';
-            }
-            updateQuery += 'background_image = ?';
+            updateFields.push('background_image = ?');
             updateValues.push(imageUrl);
         }
-        
-        updateQuery += ' WHERE id = ?';
+
+        // Если нет полей для обновления, возвращаем ошибку
+        if (updateFields.length === 0) {
+            return res.status(400).json({ error: 'Нет данных для обновления' });
+        }
+
+        // Добавляем id в конец массива значений
         updateValues.push(id);
+
+        // Формируем финальный SQL запрос
+        const updateQuery = `UPDATE services SET ${updateFields.join(', ')} WHERE id = ?`;
+
+        console.log('SQL Query:', updateQuery);
+        console.log('Values:', updateValues);
 
         // Выполняем обновление
         db.query(updateQuery, updateValues, (err, result) => {
@@ -999,3 +1004,4 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
+
