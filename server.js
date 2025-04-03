@@ -972,6 +972,79 @@ app.put('/services/:id', async (req, res) => {
     }
 });
 
+// Загрузка изображения для услуги
+app.post('/services/:id/upload-image', serviceUpload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Изображение не было загружено' });
+        }
+
+        // Конвертируем буфер в base64
+        const base64Image = req.file.buffer.toString('base64');
+
+        // Загружаем изображение на ImgBB
+        const postData = new URLSearchParams();
+        postData.append('image', base64Image);
+        postData.append('key', process.env.IMGBB_API_KEY);
+
+        const options = {
+            hostname: 'api.imgbb.com',
+            path: '/1/upload',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': postData.toString().length
+            }
+        };
+
+        const imgbbResponse = await new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                res.on('end', () => {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            });
+
+            req.on('error', (error) => {
+                reject(error);
+            });
+
+            req.write(postData.toString());
+            req.end();
+        });
+
+        if (!imgbbResponse.success) {
+            throw new Error('Ошибка при загрузке изображения на ImgBB');
+        }
+
+        const imageUrl = imgbbResponse.data.url;
+
+        // Обновляем URL изображения в базе данных
+        const updateQuery = 'UPDATE services SET background_image = ? WHERE id = ?';
+        db.query(updateQuery, [imageUrl, req.params.id], (err, result) => {
+            if (err) {
+                console.error("Ошибка при обновлении изображения услуги:", err);
+                return res.status(500).json({ error: 'Ошибка при обновлении изображения услуги' });
+            }
+            res.json({ 
+                success: true, 
+                imageUrl,
+                message: 'Изображение успешно загружено и обновлено'
+            });
+        });
+    } catch (error) {
+        console.error("Ошибка при обработке запроса загрузки изображения:", error);
+        res.status(500).json({ error: 'Ошибка сервера при загрузке изображения' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
