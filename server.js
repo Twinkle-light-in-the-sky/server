@@ -785,7 +785,21 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Добавляем функцию для загрузки изображения услуги на ImgBB
+// Настройка multer для загрузки изображений услуг
+const serviceUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 32 * 1024 * 1024 // 32MB
+    },
+    fileFilter: function (req, file, cb) {
+        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+            return cb(new Error('Только изображения разрешены!'), false);
+        }
+        cb(null, true);
+    }
+});
+
+// Функция для загрузки изображения на ImgBB
 const uploadServiceImageToImgBB = async (imageBase64) => {
     const imgbbApiKey = process.env.IMGBB_API_KEY;
     
@@ -835,22 +849,30 @@ const uploadServiceImageToImgBB = async (imageBase64) => {
     });
 };
 
-// Настройка multer для загрузки изображений услуг
-const serviceUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB
-    },
-    fileFilter: function (req, file, cb) {
-        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
-            return cb(new Error('Только изображения разрешены!'), false);
-        }
-        cb(null, true);
+// Получение всех услуг
+app.get('/api/services', async (req, res) => {
+    try {
+        console.log('Получение списка услуг');
+        const services = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM services', (err, results) => {
+                if (err) {
+                    console.error('Ошибка при получении услуг:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+        
+        res.json(services);
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
-// Эндпоинт для добавления услуги
-app.post('/service', serviceUpload.single('background_image'), async (req, res) => {
+// Добавление новой услуги
+app.post('/api/services', serviceUpload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на добавление услуги');
         console.log('Тело запроса:', req.body);
@@ -872,30 +894,34 @@ app.post('/service', serviceUpload.single('background_image'), async (req, res) 
         console.log('Данные услуги:', { title, description });
 
         const insertQuery = 'INSERT INTO services (title, description, background_image) VALUES (?, ?, ?)';
-        db.query(insertQuery, [title, description, imageUrl], (err, result) => {
-            if (err) {
-                console.error('Ошибка при добавлении услуги:', err);
-                return res.status(500).json({ error: 'Ошибка при добавлении услуги' });
-            }
-            
-            const newService = {
-                id: result.insertId,
-                title,
-                description,
-                background_image: imageUrl
-            };
-            
-            console.log('Услуга успешно добавлена:', newService);
-            res.json(newService);
+        const result = await new Promise((resolve, reject) => {
+            db.query(insertQuery, [title, description, imageUrl], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при добавлении услуги:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
         });
+        
+        const newService = {
+            id: result.insertId,
+            title,
+            description,
+            background_image: imageUrl
+        };
+        
+        console.log('Услуга успешно добавлена:', newService);
+        res.json(newService);
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
-// Эндпоинт для обновления услуги
-app.put('/service/:id', serviceUpload.single('background_image'), async (req, res) => {
+// Обновление услуги
+app.put('/api/services/:id', serviceUpload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на обновление услуги');
         const { id } = req.params;
@@ -917,49 +943,63 @@ app.put('/service/:id', serviceUpload.single('background_image'), async (req, re
         console.log('Данные для обновления:', { title, description, imageUrl });
 
         const updateQuery = 'UPDATE services SET title = ?, description = ?, background_image = ? WHERE id = ?';
-        db.query(updateQuery, [title, description, imageUrl, id], (err, result) => {
-            if (err) {
-                console.error('Ошибка при обновлении услуги:', err);
-                return res.status(500).json({ error: 'Ошибка при обновлении услуги' });
-            }
-            
-            if (result.affectedRows === 0) {
-                return res.status(404).json({ error: 'Услуга не найдена' });
-            }
-            
-            const updatedService = {
-                id: parseInt(id),
-                title,
-                description,
-                background_image: imageUrl
-            };
-            
-            console.log('Услуга успешно обновлена:', updatedService);
-            res.json(updatedService);
+        const result = await new Promise((resolve, reject) => {
+            db.query(updateQuery, [title, description, imageUrl, id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при обновлении услуги:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
         });
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Услуга не найдена' });
+        }
+        
+        const updatedService = {
+            id: parseInt(id),
+            title,
+            description,
+            background_image: imageUrl
+        };
+        
+        console.log('Услуга успешно обновлена:', updatedService);
+        res.json(updatedService);
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
-// Эндпоинт для удаления услуги
-app.delete('/service/:id', (req, res) => {
-    const { id } = req.params;
-    
-    const deleteQuery = 'DELETE FROM services WHERE id = ?';
-    db.query(deleteQuery, [id], (err, result) => {
-        if (err) {
-            console.error('Ошибка при удалении услуги:', err);
-            return res.status(500).json({ error: 'Ошибка при удалении услуги' });
-        }
+// Удаление услуги
+app.delete('/api/services/:id', async (req, res) => {
+    try {
+        console.log('Получен запрос на удаление услуги:', req.params.id);
+        
+        const deleteQuery = 'DELETE FROM services WHERE id = ?';
+        const result = await new Promise((resolve, reject) => {
+            db.query(deleteQuery, [req.params.id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при удалении услуги:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
         
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'Услуга не найдена' });
         }
         
+        console.log('Услуга успешно удалена');
         res.json({ message: 'Услуга успешно удалена' });
-    });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
 });
 
 const PORT = process.env.PORT || 3001;
