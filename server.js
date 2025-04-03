@@ -1000,6 +1000,86 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
     }
 });
 
+// Создание новой услуги
+app.post('/services', upload.single('image'), async (req, res) => {
+    try {
+        const { title, description } = req.body;
+        let imageUrl = null;
+
+        // Если загружено изображение
+        if (req.file) {
+            // Конвертируем буфер в base64
+            const base64Image = req.file.buffer.toString('base64');
+
+            // Загружаем изображение на ImgBB
+            const postData = new URLSearchParams();
+            postData.append('image', base64Image);
+            postData.append('key', process.env.IMGBB_API_KEY);
+
+            const options = {
+                hostname: 'api.imgbb.com',
+                path: '/1/upload',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Length': postData.toString().length
+                }
+            };
+
+            const imgbbResponse = await new Promise((resolve, reject) => {
+                const req = https.request(options, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
+                    res.on('end', () => {
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    });
+                });
+
+                req.on('error', (error) => {
+                    reject(error);
+                });
+
+                req.write(postData.toString());
+                req.end();
+            });
+
+            if (!imgbbResponse.success) {
+                throw new Error('Ошибка при загрузке изображения на ImgBB');
+            }
+
+            imageUrl = imgbbResponse.data.url;
+        }
+
+        // Создаем новую услугу в базе данных
+        const insertQuery = 'INSERT INTO services (title, description, background_image) VALUES (?, ?, ?)';
+        db.query(insertQuery, [title, description, imageUrl], (err, result) => {
+            if (err) {
+                console.error("Ошибка при создании услуги:", err);
+                return res.status(500).json({ error: 'Ошибка при создании услуги' });
+            }
+            res.json({ 
+                success: true,
+                message: 'Услуга успешно создана',
+                data: { 
+                    id: result.insertId,
+                    title,
+                    description,
+                    background_image: imageUrl
+                }
+            });
+        });
+    } catch (error) {
+        console.error("Ошибка при обработке запроса /services:", error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
