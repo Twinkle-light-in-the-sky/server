@@ -28,7 +28,7 @@ const fs = require('fs');
 const app = express();
 
 // Настройка CORS
-app.use(cors({
+const corsOptions = {
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
@@ -44,23 +44,28 @@ app.use(cors({
     ],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: true,
-    maxAge: 86400, // 24 часа
+    maxAge: 86400,
     preflightContinue: false,
     optionsSuccessStatus: 204
-}));
+};
 
-// Добавляем middleware для обработки preflight запросов
-app.options('*', cors());
+app.use(cors(corsOptions));
+
+// Обработка preflight запросов
+app.options('*', cors(corsOptions));
 
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Origin', req.headers.origin);
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+    const origin = req.headers.origin;
+    if (corsOptions.origin.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', corsOptions.methods.join(','));
+        res.header('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(','));
+    }
     
     if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+        return res.status(204).end();
     }
     
     console.log('Incoming request:', {
@@ -70,14 +75,6 @@ app.use((req, res, next) => {
         body: req.body
     });
 
-    const origin = req.headers.origin;
-    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
-    }
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
-    res.header('Access-Control-Max-Age', '86400');
-    
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
