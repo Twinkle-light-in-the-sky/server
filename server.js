@@ -838,13 +838,21 @@ const uploadServiceImageToImgBB = async (imageBase64) => {
 // Эндпоинт для добавления услуги
 app.post('/service', async (req, res) => {
     try {
-        const { title, description, background_image } = req.body;
+        console.log('Получен запрос на добавление услуги');
         
-        // Загружаем изображение на ImgBB
-        let imageUrl = null;
-        if (background_image) {
-            imageUrl = await uploadServiceImageToImgBB(background_image);
+        if (!req.files || !req.files.background_image) {
+            return res.status(400).json({ error: 'Изображение не было загружено' });
         }
+
+        const imageFile = req.files.background_image;
+        console.log('Получено изображение:', imageFile.name);
+
+        // Загружаем изображение на ImgBB
+        const imageUrl = await uploadServiceImageToImgBB(imageFile.data.toString('base64'));
+        console.log('Изображение загружено на ImgBB:', imageUrl);
+
+        const { title, description } = req.body;
+        console.log('Данные услуги:', { title, description });
 
         const insertQuery = 'INSERT INTO services (title, description, background_image) VALUES (?, ?, ?)';
         db.query(insertQuery, [title, description, imageUrl], (err, result) => {
@@ -860,6 +868,7 @@ app.post('/service', async (req, res) => {
                 background_image: imageUrl
             };
             
+            console.log('Услуга успешно добавлена:', newService);
             res.json(newService);
         });
     } catch (error) {
@@ -871,15 +880,21 @@ app.post('/service', async (req, res) => {
 // Эндпоинт для обновления услуги
 app.put('/service/:id', async (req, res) => {
     try {
+        console.log('Получен запрос на обновление услуги');
         const { id } = req.params;
-        const { title, description, background_image } = req.body;
         
         let imageUrl = null;
-        if (background_image) {
-            imageUrl = await uploadServiceImageToImgBB(background_image);
+        if (req.files && req.files.background_image) {
+            const imageFile = req.files.background_image;
+            console.log('Получено новое изображение:', imageFile.name);
+            imageUrl = await uploadServiceImageToImgBB(imageFile.data.toString('base64'));
+            console.log('Изображение загружено на ImgBB:', imageUrl);
         }
 
-        const updateQuery = 'UPDATE services SET title = ?, description = ?, background_image = ? WHERE id = ?';
+        const { title, description } = req.body;
+        console.log('Данные для обновления:', { title, description, imageUrl });
+
+        const updateQuery = 'UPDATE services SET title = ?, description = ?, background_image = COALESCE(?, background_image) WHERE id = ?';
         db.query(updateQuery, [title, description, imageUrl, id], (err, result) => {
             if (err) {
                 console.error('Ошибка при обновлении услуги:', err);
@@ -894,9 +909,10 @@ app.put('/service/:id', async (req, res) => {
                 id: parseInt(id),
                 title,
                 description,
-                background_image: imageUrl
+                background_image: imageUrl || req.body.background_image
             };
             
+            console.log('Услуга успешно обновлена:', updatedService);
             res.json(updatedService);
         });
     } catch (error) {
