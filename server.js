@@ -873,7 +873,7 @@ const uploadServiceImageToImgBB = async (imageBase64) => {
 };
 
 // Получение всех услуг
-app.get('/services', async (req, res) => {
+app.get('/service', async (req, res) => {
     try {
         console.log('Получение списка услуг');
         const services = await new Promise((resolve, reject) => {
@@ -888,6 +888,55 @@ app.get('/services', async (req, res) => {
         });
         
         res.json(services);
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Добавление новой услуги
+app.post('/services', serviceUpload.single('background_image'), async (req, res) => {
+    try {
+        console.log('Получен запрос на добавление услуги');
+        console.log('Тело запроса:', req.body);
+        console.log('Файл:', req.file);
+
+        if (!req.file) {
+            console.log('Изображение не было загружено');
+            return res.status(400).json({ error: 'Изображение не было загружено' });
+        }
+
+        const imageFile = req.file;
+        console.log('Получено изображение:', imageFile.originalname);
+
+        // Загружаем изображение на ImgBB
+        const imageUrl = await uploadServiceImageToImgBB(imageFile.buffer.toString('base64'));
+        console.log('Изображение загружено на ImgBB:', imageUrl);
+
+        const { title, description } = req.body;
+        console.log('Данные услуги:', { title, description });
+
+        const insertQuery = 'INSERT INTO services (title, description, background_image) VALUES (?, ?, ?)';
+        const result = await new Promise((resolve, reject) => {
+            db.query(insertQuery, [title, description, imageUrl], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при добавлении услуги:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+        
+        const newService = {
+            id: result.insertId,
+            title,
+            description,
+            background_image: imageUrl
+        };
+        
+        console.log('Услуга успешно добавлена:', newService);
+        res.json(newService);
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
