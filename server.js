@@ -892,6 +892,109 @@ app.post('/services/:id/upload-image', upload.single('image'), async (req, res) 
     }
 });
 
+// Обновление услуги
+app.put('/services/:id', upload.single('image'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, description } = req.body;
+        let imageUrl = null;
+
+        // Если загружено новое изображение
+        if (req.file) {
+            // Конвертируем буфер в base64
+            const base64Image = req.file.buffer.toString('base64');
+
+            // Загружаем изображение на ImgBB
+            const postData = new URLSearchParams();
+            postData.append('image', base64Image);
+            postData.append('key', process.env.IMGBB_API_KEY);
+
+            const options = {
+                hostname: 'api.imgbb.com',
+                path: '/1/upload',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Length': postData.toString().length
+                }
+            };
+
+            const imgbbResponse = await new Promise((resolve, reject) => {
+                const req = https.request(options, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
+                    res.on('end', () => {
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    });
+                });
+
+                req.on('error', (error) => {
+                    reject(error);
+                });
+
+                req.write(postData.toString());
+                req.end();
+            });
+
+            if (!imgbbResponse.success) {
+                throw new Error('Ошибка при загрузке изображения на ImgBB');
+            }
+
+            imageUrl = imgbbResponse.data.url;
+        }
+
+        // Формируем SQL запрос
+        let updateQuery = 'UPDATE services SET ';
+        const updateValues = [];
+        
+        if (title) {
+            updateQuery += 'title = ?';
+            updateValues.push(title);
+        }
+        
+        if (description) {
+            if (updateValues.length > 0) {
+                updateQuery += ', ';
+            }
+            updateQuery += 'description = ?';
+            updateValues.push(description);
+        }
+        
+        if (imageUrl) {
+            if (updateValues.length > 0) {
+                updateQuery += ', ';
+            }
+            updateQuery += 'background_image = ?';
+            updateValues.push(imageUrl);
+        }
+        
+        updateQuery += ' WHERE id = ?';
+        updateValues.push(id);
+
+        // Выполняем обновление
+        db.query(updateQuery, updateValues, (err, result) => {
+            if (err) {
+                console.error("Ошибка при обновлении услуги:", err);
+                return res.status(500).json({ error: 'Ошибка при обновлении услуги' });
+            }
+            res.json({ 
+                success: true,
+                message: 'Услуга успешно обновлена',
+                data: { id, title, description, background_image: imageUrl }
+            });
+        });
+    } catch (error) {
+        console.error("Ошибка при обработке запроса /services/:id:", error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
