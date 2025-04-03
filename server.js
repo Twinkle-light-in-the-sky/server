@@ -799,8 +799,8 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Настройка multer для загрузки изображений услуг
-const serviceUpload = multer({
+// Настройка multer для загрузки изображений
+const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
         fileSize: 32 * 1024 * 1024 // 32MB
@@ -813,171 +813,15 @@ const serviceUpload = multer({
     }
 });
 
-// Функция для загрузки изображения на ImgBB
-const uploadServiceImageToImgBB = async (imageBase64) => {
-    const imgbbApiKey = process.env.IMGBB_API_KEY;
-    
-    if (!imgbbApiKey) {
-        throw new Error('ImgBB API key не настроен');
-    }
-
-    const formData = new URLSearchParams();
-    formData.append('key', imgbbApiKey);
-    formData.append('image', imageBase64);
-    
-    return new Promise((resolve, reject) => {
-        const options = {
-            hostname: 'api.imgbb.com',
-            path: '/1/upload',
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': formData.toString().length
-            }
-        };
-
-        const req = https.request(options, (res) => {
-            let data = '';
-            
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
-            
-            res.on('end', () => {
-                try {
-                    const response = JSON.parse(data);
-                    if (response.success) {
-                        resolve(response.data.url);
-                    } else {
-                        reject(new Error('Ошибка загрузки изображения'));
-                    }
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        });
-
-        req.on('error', reject);
-        req.write(formData.toString());
-        req.end();
-    });
-};
-
-// Получение всех услуг
-app.get('/service', async (req, res) => {
-    try {
-        console.log('Получение списка услуг');
-        const services = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM services', (err, results) => {
-                if (err) {
-                    console.error('Ошибка при получении услуг:', err);
-                    reject(err);
-                } else {
-                    resolve(results);
-                }
-            });
-        });
-        
-        res.json(services);
-    } catch (error) {
-        console.error('Ошибка при обработке запроса:', error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
-});
-
-// Добавление новой услуги
-app.post('/services', serviceUpload.single('background_image'), async (req, res) => {
-    try {
-        console.log('Получен запрос на добавление услуги');
-        console.log('Тело запроса:', req.body);
-        console.log('Файл:', req.file);
-
-        if (!req.file) {
-            console.log('Изображение не было загружено');
-            return res.status(400).json({ error: 'Изображение не было загружено' });
-        }
-
-        const imageFile = req.file;
-        console.log('Получено изображение:', imageFile.originalname);
-
-        // Загружаем изображение на ImgBB
-        const imageUrl = await uploadServiceImageToImgBB(imageFile.buffer.toString('base64'));
-        console.log('Изображение загружено на ImgBB:', imageUrl);
-
-        const { title, description } = req.body;
-        console.log('Данные услуги:', { title, description });
-
-        const insertQuery = 'INSERT INTO services (title, description, background_image) VALUES (?, ?, ?)';
-        const result = await new Promise((resolve, reject) => {
-            db.query(insertQuery, [title, description, imageUrl], (err, results) => {
-                if (err) {
-                    console.error('Ошибка при добавлении услуги:', err);
-                    reject(err);
-                } else {
-                    resolve(results);
-                }
-            });
-        });
-        
-        const newService = {
-            id: result.insertId,
-            title,
-            description,
-            background_image: imageUrl
-        };
-        
-        console.log('Услуга успешно добавлена:', newService);
-        res.json(newService);
-    } catch (error) {
-        console.error('Ошибка при обработке запроса:', error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
-});
-
-// Обновление названия услуги
-app.put('/services/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { title, description } = req.body;
-        
-        let updateQuery = 'UPDATE services SET ';
-        const updateValues = [];
-        
-        if (title) {
-            updateQuery += 'title = ?';
-            updateValues.push(title);
-        }
-        
-        if (description) {
-            if (updateValues.length > 0) {
-                updateQuery += ', ';
-            }
-            updateQuery += 'description = ?';
-            updateValues.push(description);
-        }
-        
-        updateQuery += ' WHERE id = ?';
-        updateValues.push(id);
-        
-        db.query(updateQuery, updateValues, (err, result) => {
-            if (err) {
-                console.error("Ошибка при обновлении услуги:", err);
-                return res.status(500).json({ error: 'Ошибка при обновлении услуги' });
-            }
-            res.json({ id, title, description });
-        });
-    } catch (error) {
-        console.error("Ошибка при обработке запроса /services/:id:", error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
-});
-
-// Настройка multer для загрузки изображений
-const upload = multer({ storage: multer.memoryStorage() });
-
 // Загрузка изображения для услуги
 app.post('/services/:id/upload-image', upload.single('image'), async (req, res) => {
     try {
+        console.log('Получен запрос на загрузку изображения:', {
+            file: req.file,
+            body: req.body,
+            params: req.params
+        });
+
         if (!req.file) {
             return res.status(400).json({ error: 'Изображение не было загружено' });
         }
