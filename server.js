@@ -938,15 +938,33 @@ app.post('/services', serviceUpload.single('background_image'), async (req, res)
 app.put('/services/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title } = req.body;
+        const { title, description } = req.body;
         
-        const updateQuery = 'UPDATE services SET title = ? WHERE id = ?';
-        db.query(updateQuery, [title, id], (err, result) => {
-            if (err) {
-                console.error("Ошибка при обновлении названия услуги:", err);
-                return res.status(500).json({ error: 'Ошибка при обновлении названия услуги' });
+        let updateQuery = 'UPDATE services SET ';
+        const updateValues = [];
+        
+        if (title) {
+            updateQuery += 'title = ?';
+            updateValues.push(title);
+        }
+        
+        if (description) {
+            if (updateValues.length > 0) {
+                updateQuery += ', ';
             }
-            res.json({ id, title });
+            updateQuery += 'description = ?';
+            updateValues.push(description);
+        }
+        
+        updateQuery += ' WHERE id = ?';
+        updateValues.push(id);
+        
+        db.query(updateQuery, updateValues, (err, result) => {
+            if (err) {
+                console.error("Ошибка при обновлении услуги:", err);
+                return res.status(500).json({ error: 'Ошибка при обновлении услуги' });
+            }
+            res.json({ id, title, description });
         });
     } catch (error) {
         console.error("Ошибка при обработке запроса /services/:id:", error);
