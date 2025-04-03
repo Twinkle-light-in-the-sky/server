@@ -835,14 +835,29 @@ const uploadServiceImageToImgBB = async (imageBase64) => {
     });
 };
 
-// Эндпоинт для добавления услуги
-const upload = multer({ storage: multer.memoryStorage() });
+// Настройка multer для загрузки изображений услуг
+const serviceUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB
+    },
+    fileFilter: function (req, file, cb) {
+        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+            return cb(new Error('Только изображения разрешены!'), false);
+        }
+        cb(null, true);
+    }
+});
 
-app.post('/service', upload.single('background_image'), async (req, res) => {
+// Эндпоинт для добавления услуги
+app.post('/service', serviceUpload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на добавление услуги');
-        
+        console.log('Тело запроса:', req.body);
+        console.log('Файл:', req.file);
+
         if (!req.file) {
+            console.log('Изображение не было загружено');
             return res.status(400).json({ error: 'Изображение не было загружено' });
         }
 
@@ -880,7 +895,7 @@ app.post('/service', upload.single('background_image'), async (req, res) => {
 });
 
 // Эндпоинт для обновления услуги
-app.put('/service/:id', upload.single('background_image'), async (req, res) => {
+app.put('/service/:id', serviceUpload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на обновление услуги');
         const { id } = req.params;
