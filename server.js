@@ -935,7 +935,7 @@ app.post('/services', serviceUpload.single('background_image'), async (req, res)
 });
 
 // Обновление названия услуги
-app.put('/services/:id/title', async (req, res) => {
+app.put('/services/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { title } = req.body;
@@ -949,7 +949,7 @@ app.put('/services/:id/title', async (req, res) => {
             res.json({ id, title });
         });
     } catch (error) {
-        console.error("Ошибка при обработке запроса /services/:id/title:", error);
+        console.error("Ошибка при обработке запроса /services/:id:", error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
