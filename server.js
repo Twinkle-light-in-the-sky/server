@@ -31,9 +31,22 @@ const app = express();
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'Accept',
+        'Origin',
+        'X-Requested-With',
+        'Access-Control-Allow-Origin',
+        'Access-Control-Allow-Headers',
+        'Access-Control-Allow-Methods',
+        'Access-Control-Allow-Credentials'
+    ],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400 // 24 часа
+    credentials: true,
+    maxAge: 86400, // 24 часа
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 }));
 
 // Добавляем middleware для обработки preflight запросов
@@ -41,6 +54,15 @@ app.options('*', cors());
 
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Origin', req.headers.origin);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+    
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    
     console.log('Incoming request:', {
         method: req.method,
         path: req.path,
