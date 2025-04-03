@@ -1130,6 +1130,61 @@ app.post('/services', upload.single('image'), async (req, res) => {
     }
 });
 
+// Удаление услуги
+app.delete('/services/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        console.log('Получен запрос на удаление услуги:', { id });
+
+        // Проверяем существование услуги
+        const checkQuery = 'SELECT * FROM services WHERE id = ?';
+        const service = await new Promise((resolve, reject) => {
+            db.query(checkQuery, [id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при проверке услуги:', err);
+                    reject(err);
+                } else {
+                    resolve(results[0]);
+                }
+            });
+        });
+
+        if (!service) {
+            console.log('Услуга не найдена:', { id });
+            return res.status(404).json({
+                success: false,
+                error: 'Услуга не найдена'
+            });
+        }
+
+        // Удаляем услугу
+        const deleteQuery = 'DELETE FROM services WHERE id = ?';
+        await new Promise((resolve, reject) => {
+            db.query(deleteQuery, [id], (err, result) => {
+                if (err) {
+                    console.error('Ошибка при удалении услуги:', err);
+                    reject(err);
+                } else {
+                    resolve(result);
+                }
+            });
+        });
+
+        console.log('Услуга успешно удалена:', { id });
+        res.json({
+            success: true,
+            message: 'Услуга успешно удалена'
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса на удаление:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при удалении услуги'
+        });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
