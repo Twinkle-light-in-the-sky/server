@@ -887,16 +887,21 @@ app.put('/service/:id', upload.single('background_image'), async (req, res) => {
         
         let imageUrl = null;
         if (req.file) {
+            // Если загружено новое изображение
             const imageFile = req.file;
             console.log('Получено новое изображение:', imageFile.originalname);
             imageUrl = await uploadServiceImageToImgBB(imageFile.buffer.toString('base64'));
             console.log('Изображение загружено на ImgBB:', imageUrl);
+        } else if (req.body.background_image) {
+            // Если передан существующий URL изображения
+            imageUrl = req.body.background_image;
+            console.log('Используется существующий URL изображения:', imageUrl);
         }
 
         const { title, description } = req.body;
         console.log('Данные для обновления:', { title, description, imageUrl });
 
-        const updateQuery = 'UPDATE services SET title = ?, description = ?, background_image = COALESCE(?, background_image) WHERE id = ?';
+        const updateQuery = 'UPDATE services SET title = ?, description = ?, background_image = ? WHERE id = ?';
         db.query(updateQuery, [title, description, imageUrl, id], (err, result) => {
             if (err) {
                 console.error('Ошибка при обновлении услуги:', err);
@@ -911,7 +916,7 @@ app.put('/service/:id', upload.single('background_image'), async (req, res) => {
                 id: parseInt(id),
                 title,
                 description,
-                background_image: imageUrl || req.body.background_image
+                background_image: imageUrl
             };
             
             console.log('Услуга успешно обновлена:', updatedService);
