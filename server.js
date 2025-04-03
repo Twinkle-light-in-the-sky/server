@@ -1096,9 +1096,10 @@ app.post('/services', upload.single('image'), async (req, res) => {
 
         // Создаем новую услугу в базе данных
         console.log('Создаем запись в БД:', { title, description, imageUrl });
-        const insertQuery = 'INSERT INTO services (title, description, background_image) VALUES (?, ?, ?)';
+        const defaultExecutorId = 1; // ID исполнителя по умолчанию
+        const insertQuery = 'INSERT INTO services (title, description, background_image, executor_id) VALUES (?, ?, ?, ?)';
         
-        db.query(insertQuery, [title, description, imageUrl], (err, result) => {
+        db.query(insertQuery, [title, description, imageUrl, defaultExecutorId], (err, result) => {
             if (err) {
                 console.error("Ошибка при создании услуги в БД:", err);
                 return res.status(500).json({ 
@@ -1115,7 +1116,8 @@ app.post('/services', upload.single('image'), async (req, res) => {
                     id: result.insertId,
                     title,
                     description,
-                    background_image: imageUrl
+                    background_image: imageUrl,
+                    executor_id: defaultExecutorId
                 }
             });
         });
