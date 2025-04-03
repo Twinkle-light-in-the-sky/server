@@ -1003,66 +1003,111 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
 // Создание новой услуги
 app.post('/services', upload.single('image'), async (req, res) => {
     try {
+        console.log('Получен запрос на создание услуги:', {
+            body: req.body,
+            file: req.file ? {
+                fieldname: req.file.fieldname,
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+                size: req.file.size,
+                buffer: req.file.buffer ? 'Buffer present' : 'No buffer'
+            } : 'No file'
+        });
+
         const { title, description } = req.body;
         let imageUrl = null;
 
-        // Если загружено изображение
-        if (req.file) {
-            // Конвертируем буфер в base64
-            const base64Image = req.file.buffer.toString('base64');
-
-            // Загружаем изображение на ImgBB
-            const postData = new URLSearchParams();
-            postData.append('image', base64Image);
-            postData.append('key', process.env.IMGBB_API_KEY);
-
-            const options = {
-                hostname: 'api.imgbb.com',
-                path: '/1/upload',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Content-Length': postData.toString().length
-                }
-            };
-
-            const imgbbResponse = await new Promise((resolve, reject) => {
-                const req = https.request(options, (res) => {
-                    let data = '';
-                    res.on('data', (chunk) => {
-                        data += chunk;
-                    });
-                    res.on('end', () => {
-                        try {
-                            resolve(JSON.parse(data));
-                        } catch (e) {
-                            reject(e);
-                        }
-                    });
-                });
-
-                req.on('error', (error) => {
-                    reject(error);
-                });
-
-                req.write(postData.toString());
-                req.end();
+        // Проверяем наличие обязательных полей
+        if (!title || !description) {
+            console.error('Отсутствуют обязательные поля:', { title, description });
+            return res.status(400).json({ 
+                success: false,
+                error: 'Пожалуйста, заполните все обязательные поля (название и описание)'
             });
+        }
 
-            if (!imgbbResponse.success) {
-                throw new Error('Ошибка при загрузке изображения на ImgBB');
+        // Если загружено изображение
+        if (req.file && req.file.buffer) {
+            try {
+                console.log('Начинаем загрузку изображения на ImgBB');
+                // Конвертируем буфер в base64
+                const base64Image = req.file.buffer.toString('base64');
+                console.log('Изображение конвертировано в base64');
+
+                // Загружаем изображение на ImgBB
+                const postData = new URLSearchParams();
+                postData.append('image', base64Image);
+                postData.append('key', process.env.IMGBB_API_KEY);
+
+                const options = {
+                    hostname: 'api.imgbb.com',
+                    path: '/1/upload',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                };
+
+                console.log('Отправляем запрос к ImgBB API');
+                const imgbbResponse = await new Promise((resolve, reject) => {
+                    const req = https.request(options, (res) => {
+                        let data = '';
+                        res.on('data', (chunk) => {
+                            data += chunk;
+                        });
+                        res.on('end', () => {
+                            try {
+                                const parsedData = JSON.parse(data);
+                                console.log('Получен ответ от ImgBB:', parsedData);
+                                resolve(parsedData);
+                            } catch (e) {
+                                console.error('Ошибка парсинга ответа ImgBB:', e);
+                                reject(e);
+                            }
+                        });
+                    });
+
+                    req.on('error', (error) => {
+                        console.error('Ошибка запроса к ImgBB:', error);
+                        reject(error);
+                    });
+
+                    req.write(postData.toString());
+                    req.end();
+                });
+
+                if (!imgbbResponse.success) {
+                    console.error('Ошибка от ImgBB:', imgbbResponse);
+                    throw new Error('Ошибка при загрузке изображения на ImgBB');
+                }
+
+                imageUrl = imgbbResponse.data.url;
+                console.log('Изображение успешно загружено:', imageUrl);
+            } catch (imgError) {
+                console.error('Ошибка при обработке изображения:', imgError);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
+                });
             }
-
-            imageUrl = imgbbResponse.data.url;
+        } else {
+            console.log('Изображение не было предоставлено');
         }
 
         // Создаем новую услугу в базе данных
+        console.log('Создаем запись в БД:', { title, description, imageUrl });
         const insertQuery = 'INSERT INTO services (title, description, background_image) VALUES (?, ?, ?)';
+        
         db.query(insertQuery, [title, description, imageUrl], (err, result) => {
             if (err) {
-                console.error("Ошибка при создании услуги:", err);
-                return res.status(500).json({ error: 'Ошибка при создании услуги' });
+                console.error("Ошибка при создании услуги в БД:", err);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при создании услуги в базе данных'
+                });
             }
+            
+            console.log('Услуга успешно создана:', result);
             res.json({ 
                 success: true,
                 message: 'Услуга успешно создана',
@@ -1076,7 +1121,10 @@ app.post('/services', upload.single('image'), async (req, res) => {
         });
     } catch (error) {
         console.error("Ошибка при обработке запроса /services:", error);
-        res.status(500).json({ error: 'Ошибка сервера' });
+        res.status(500).json({ 
+            success: false,
+            error: 'Внутренняя ошибка сервера. Пожалуйста, попробуйте позже.'
+        });
     }
 });
 
