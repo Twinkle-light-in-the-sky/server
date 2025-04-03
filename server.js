@@ -26,6 +26,8 @@ const multer = require('multer');
 const https = require('https');
 const fs = require('fs');
 const app = express();
+
+// Настройка CORS
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -850,7 +852,7 @@ const uploadServiceImageToImgBB = async (imageBase64) => {
 };
 
 // Получение всех услуг
-app.get('/api/services', async (req, res) => {
+app.get('/services', async (req, res) => {
     try {
         console.log('Получение списка услуг');
         const services = await new Promise((resolve, reject) => {
@@ -872,7 +874,7 @@ app.get('/api/services', async (req, res) => {
 });
 
 // Добавление новой услуги
-app.post('/api/services', serviceUpload.single('background_image'), async (req, res) => {
+app.post('/services', serviceUpload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на добавление услуги');
         console.log('Тело запроса:', req.body);
@@ -921,7 +923,7 @@ app.post('/api/services', serviceUpload.single('background_image'), async (req, 
 });
 
 // Обновление услуги
-app.put('/api/services/:id', serviceUpload.single('background_image'), async (req, res) => {
+app.put('/services/:id', serviceUpload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на обновление услуги');
         const { id } = req.params;
@@ -974,7 +976,7 @@ app.put('/api/services/:id', serviceUpload.single('background_image'), async (re
 });
 
 // Удаление услуги
-app.delete('/api/services/:id', async (req, res) => {
+app.delete('/services/:id', async (req, res) => {
     try {
         console.log('Получен запрос на удаление услуги:', req.params.id);
         
