@@ -29,7 +29,13 @@ const app = express();
 
 // Настройка CORS
 const corsOptions = {
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://server-9va8.onrender.com',
+        'https://barsikec.beget.tech',
+        'https://startset-app.vercel.app'
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
         'Content-Type',
@@ -74,10 +80,6 @@ app.use((req, res, next) => {
         headers: req.headers,
         body: req.body
     });
-
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
     next();
 });
 
