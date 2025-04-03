@@ -836,19 +836,21 @@ const uploadServiceImageToImgBB = async (imageBase64) => {
 };
 
 // Эндпоинт для добавления услуги
-app.post('/service', async (req, res) => {
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.post('/service', upload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на добавление услуги');
         
-        if (!req.files || !req.files.background_image) {
+        if (!req.file) {
             return res.status(400).json({ error: 'Изображение не было загружено' });
         }
 
-        const imageFile = req.files.background_image;
-        console.log('Получено изображение:', imageFile.name);
+        const imageFile = req.file;
+        console.log('Получено изображение:', imageFile.originalname);
 
         // Загружаем изображение на ImgBB
-        const imageUrl = await uploadServiceImageToImgBB(imageFile.data.toString('base64'));
+        const imageUrl = await uploadServiceImageToImgBB(imageFile.buffer.toString('base64'));
         console.log('Изображение загружено на ImgBB:', imageUrl);
 
         const { title, description } = req.body;
@@ -878,16 +880,16 @@ app.post('/service', async (req, res) => {
 });
 
 // Эндпоинт для обновления услуги
-app.put('/service/:id', async (req, res) => {
+app.put('/service/:id', upload.single('background_image'), async (req, res) => {
     try {
         console.log('Получен запрос на обновление услуги');
         const { id } = req.params;
         
         let imageUrl = null;
-        if (req.files && req.files.background_image) {
-            const imageFile = req.files.background_image;
-            console.log('Получено новое изображение:', imageFile.name);
-            imageUrl = await uploadServiceImageToImgBB(imageFile.data.toString('base64'));
+        if (req.file) {
+            const imageFile = req.file;
+            console.log('Получено новое изображение:', imageFile.originalname);
+            imageUrl = await uploadServiceImageToImgBB(imageFile.buffer.toString('base64'));
             console.log('Изображение загружено на ImgBB:', imageUrl);
         }
 
