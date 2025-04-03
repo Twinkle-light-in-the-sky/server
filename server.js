@@ -375,16 +375,7 @@ app.get('/service', async (req, res) => {
                 console.error("Ошибка при получении данных услуг:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            // Убедимся, что все URL изображений корректные
-            const servicesWithUrls = results.map(service => ({
-                ...service,
-                background_image: service.background_image // URL уже с ImgBB
-            }));
-            
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-            res.json(servicesWithUrls);
+            res.json(results);
         });
     } catch (error) {
         console.error("Ошибка при обработке запроса /service:", error);
