@@ -972,8 +972,11 @@ app.put('/services/:id', async (req, res) => {
     }
 });
 
+// Настройка multer для загрузки изображений
+const upload = multer({ storage: multer.memoryStorage() });
+
 // Загрузка изображения для услуги
-app.post('/services/:id/upload-image', serviceUpload.single('image'), async (req, res) => {
+app.post('/services/:id/upload-image', upload.single('image'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'Изображение не было загружено' });
