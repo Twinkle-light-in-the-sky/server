@@ -1584,6 +1584,61 @@ app.put('/benefits/:id', async (req, res) => {
     }
 });
 
+// Удаление преимущества
+app.delete('/benefits/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        console.log('Получен запрос на удаление преимущества:', { id });
+
+        // Проверяем существование преимущества
+        const checkQuery = 'SELECT * FROM benefits WHERE id = ?';
+        const benefit = await new Promise((resolve, reject) => {
+            db.query(checkQuery, [id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при проверке преимущества:', err);
+                    reject(err);
+                } else {
+                    resolve(results[0]);
+                }
+            });
+        });
+
+        if (!benefit) {
+            console.log('Преимущество не найдено:', { id });
+            return res.status(404).json({
+                success: false,
+                error: 'Преимущество не найдено'
+            });
+        }
+
+        // Удаляем преимущество
+        const deleteQuery = 'DELETE FROM benefits WHERE id = ?';
+        await new Promise((resolve, reject) => {
+            db.query(deleteQuery, [id], (err, result) => {
+                if (err) {
+                    console.error('Ошибка при удалении преимущества:', err);
+                    reject(err);
+                } else {
+                    resolve(result);
+                }
+            });
+        });
+
+        console.log('Преимущество успешно удалено:', { id });
+        res.json({
+            success: true,
+            message: 'Преимущество успешно удалено'
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса на удаление:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при удалении преимущества'
+        });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
