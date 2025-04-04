@@ -361,12 +361,17 @@ app.get('/projects', async (req, res) => {
         console.log('Получен запрос на получение проектов');
         
         const projects = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM projects ORDER BY id ASC', (err, results) => {
-            if (err) {
+            db.query('SELECT id, projects_title, projects_description, projects_background, is_dark_theme FROM projects ORDER BY id ASC', (err, results) => {
+                if (err) {
                     console.error('Ошибка при получении проектов:', err);
                     reject(err);
                 } else {
-                    resolve(results);
+                    // Преобразуем is_dark_theme из числа (0/1) в boolean
+                    const formattedResults = results.map(project => ({
+                        ...project,
+                        is_dark_theme: Boolean(project.is_dark_theme)
+                    }));
+                    resolve(formattedResults);
                 }
             });
         });
@@ -1153,22 +1158,14 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
                 fieldname: req.file.fieldname,
                 originalname: req.file.originalname,
                 mimetype: req.file.mimetype,
-                size: req.file.size,
-                buffer: req.file.buffer ? 'Buffer present' : 'No buffer'
+                size: req.file.size
             } : 'No file'
         });
 
-        const { projects_title, projects_description } = req.body;
-        let imageUrl = null;
+        const { projects_title, projects_description, is_dark_theme } = req.body;
+        console.log('Полученные данные:', { projects_title, projects_description, is_dark_theme });
 
-        // Проверяем наличие обязательных полей
-        if (!projects_title || !projects_description) {
-            console.error('Отсутствуют обязательные поля:', { projects_title, projects_description });
-            return res.status(400).json({ 
-                success: false,
-                error: 'Пожалуйста, заполните все обязательные поля (название и описание)'
-            });
-        }
+        let imageUrl = null;
 
         // Если есть файл изображения
         if (req.file) {
@@ -1238,10 +1235,22 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
         }
 
         // Создаем новый проект в базе данных
-        console.log('Создаем запись в БД:', { projects_title, projects_description, imageUrl });
-        const insertQuery = 'INSERT INTO projects (projects_title, projects_description, projects_background) VALUES (?, ?, ?)';
+        console.log('Создаем запись в БД:', { 
+            projects_title, 
+            projects_description, 
+            imageUrl, 
+            is_dark_theme,
+            is_dark_theme_value: is_dark_theme === 'true' ? 1 : 0
+        });
+
+        const insertQuery = 'INSERT INTO projects (projects_title, projects_description, projects_background, is_dark_theme) VALUES (?, ?, ?, ?)';
         
-        db.query(insertQuery, [projects_title, projects_description, imageUrl], (err, result) => {
+        db.query(insertQuery, [
+            projects_title, 
+            projects_description, 
+            imageUrl, 
+            is_dark_theme === 'true' ? 1 : 0
+        ], (err, result) => {
             if (err) {
                 console.error("Ошибка при создании проекта в БД:", err);
                 return res.status(500).json({ 
@@ -1258,7 +1267,8 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
                     id: result.insertId,
                     projects_title,
                     projects_description,
-                    projects_background: imageUrl
+                    projects_background: imageUrl,
+                    is_dark_theme: is_dark_theme === 'true'
                 }
             });
         });
@@ -1275,7 +1285,9 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
 app.put('/projects/:id', upload.single('projects_background'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { projects_title, projects_description } = req.body;
+        const { projects_title, projects_description, is_dark_theme } = req.body;
+        console.log('Обновление проекта:', { id, projects_title, projects_description, is_dark_theme });
+
         let imageUrl = null;
 
         // Если загружено новое изображение
@@ -1347,6 +1359,11 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
             updateValues.push(imageUrl);
         }
 
+        if (is_dark_theme !== undefined) {
+            updateFields.push('is_dark_theme = ?');
+            updateValues.push(is_dark_theme === 'true' ? 1 : 0);
+        }
+
         // Если нет полей для обновления, возвращаем ошибку
         if (updateFields.length === 0) {
             return res.status(400).json({ error: 'Нет данных для обновления' });
@@ -1370,7 +1387,13 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
             res.json({ 
                 success: true,
                 message: 'Проект успешно обновлен',
-                data: { id, projects_title, projects_description, projects_background: imageUrl }
+                data: { 
+                    id, 
+                    projects_title, 
+                    projects_description, 
+                    projects_background: imageUrl,
+                    is_dark_theme: is_dark_theme === 'true'
+                }
             });
         });
     } catch (error) {
