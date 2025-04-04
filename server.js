@@ -6,7 +6,6 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const path = require('path');
 require('./queries/databaseQueries');
-const FormData = require('form-data');
 const fs = require('fs');
 
 // Загружаем переменные окружения
@@ -1243,13 +1242,16 @@ app.listen(PORT, () => {
 // Функция для загрузки изображения на ImgBB
 async function uploadToImgBB(imageBuffer) {
     try {
-        const formData = new FormData();
+        const formData = new URLSearchParams();
         formData.append('image', imageBuffer.toString('base64'));
         formData.append('key', process.env.IMGBB_API_KEY);
 
         const response = await fetch('https://api.imgbb.com/1/upload', {
             method: 'POST',
-            body: formData
+            body: formData,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
         });
 
         if (!response.ok) {
