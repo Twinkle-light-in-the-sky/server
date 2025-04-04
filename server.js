@@ -5,7 +5,8 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const path = require('path');
-require('./queries/databaseQueries');
+const multer = require('multer');
+const https = require('https');
 const fs = require('fs');
 
 // Загружаем переменные окружения
@@ -23,18 +24,34 @@ if (!process.env.IMGBB_API_KEY) {
   console.log('IMGBB_API_KEY установлен напрямую');
 }
 
-const multer = require('multer');
-const https = require('https');
-const app = express();
+// Настройка multer для обработки файлов
+const storage = multer.memoryStorage();
+const fileFilter = (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+    } else {
+        cb(new Error('Неверный тип файла. Разрешены только изображения.'), false);
+    }
+};
 
-// Настройка CORS
-app.use(cors({
+const upload = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: {
+        fileSize: 32 * 1024 * 1024 // 32MB
+    }
+});
+
+const corsOptions = {
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    credentials: true,
     maxAge: 86400 // 24 часа
-}));
+};
+
+const app = express();
 
 app.use(cors(corsOptions));
 
@@ -85,31 +102,6 @@ const servicesBgPath = path.join(__dirname, 'uploads', 'services-bg');
 app.use('/uploads/services-bg', express.static(servicesBgPath));
 const projectsBgPath = path.join(__dirname, 'uploads', 'projects-bg');
 app.use('/uploads/projects-bg', express.static(projectsBgPath));
-
-// Настройка multer для сохранения файлов
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, path.join(__dirname, 'uploads', 'avatars'));
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, req.user.id + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const localUpload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB
-    },
-    fileFilter: function (req, file, cb) {
-        // Проверяем тип файла
-        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
-            return cb(new Error('Только изображения разрешены!'), false);
-        }
-        cb(null, true);
-    }
-});
 
 // Middleware для проверки JWT токена
 const authenticateToken = (req, res, next) => {
@@ -780,20 +772,6 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Настройка multer для загрузки изображений
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 32 * 1024 * 1024 // 32MB
-    },
-    fileFilter: function (req, file, cb) {
-        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
-            return cb(new Error('Только изображения разрешены!'), false);
-        }
-        cb(null, true);
-    }
-});
-
 // Загрузка изображения для услуги
 app.post('/services/:id/upload-image', upload.single('image'), async (req, res) => {
     try {
@@ -1192,29 +1170,30 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
             });
         }
 
-        // Если загружено изображение
-        if (req.file && req.file.buffer) {
+        // Если есть файл изображения
+        if (req.file) {
             try {
-                console.log('Начинаем загрузку изображения на ImgBB');
+                console.log('Начинаем обработку изображения');
                 // Конвертируем буфер в base64
                 const base64Image = req.file.buffer.toString('base64');
-                console.log('Изображение конвертировано в base64');
+                console.log('Изображение конвертировано в base64, размер:', base64Image.length);
 
                 // Загружаем изображение на ImgBB
                 const postData = new URLSearchParams();
                 postData.append('image', base64Image);
                 postData.append('key', process.env.IMGBB_API_KEY);
 
+                console.log('Отправляем запрос к ImgBB API');
                 const options = {
                     hostname: 'api.imgbb.com',
                     path: '/1/upload',
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Content-Length': postData.toString().length
                     }
                 };
 
-                console.log('Отправляем запрос к ImgBB API');
                 const imgbbResponse = await new Promise((resolve, reject) => {
                     const req = https.request(options, (res) => {
                         let data = '';
@@ -1249,15 +1228,13 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
 
                 imageUrl = imgbbResponse.data.url;
                 console.log('Изображение успешно загружено:', imageUrl);
-            } catch (imgError) {
-                console.error('Ошибка при обработке изображения:', imgError);
+            } catch (error) {
+                console.error('Ошибка при обработке изображения:', error);
                 return res.status(500).json({ 
                     success: false,
                     error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
                 });
             }
-        } else {
-            console.log('Изображение не было предоставлено');
         }
 
         // Создаем новый проект в базе данных
