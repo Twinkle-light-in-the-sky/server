@@ -1210,27 +1210,110 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
 });
 
 // Обновление проекта
-app.put('/projects/:id', async (req, res) => {
+app.put('/projects/:id', upload.single('projects_background'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { projects_title, projects_description, projects_background } = req.body;
+        const { projects_title, projects_description } = req.body;
+        let imageUrl = null;
 
-        const query = `
-            UPDATE projects 
-            SET projects_title = ?, 
-                projects_description = ?, 
-                projects_background = ?
-            WHERE id = ?
-        `;
+        // Если загружено новое изображение
+        if (req.file) {
+            // Конвертируем буфер в base64
+            const base64Image = req.file.buffer.toString('base64');
 
-        const values = [projects_title, projects_description, projects_background, id];
+            // Загружаем изображение на ImgBB
+            const postData = new URLSearchParams();
+            postData.append('image', base64Image);
+            postData.append('key', process.env.IMGBB_API_KEY);
 
-        await db.query(query, values);
+            const options = {
+                hostname: 'api.imgbb.com',
+                path: '/1/upload',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Length': postData.toString().length
+                }
+            };
+
+            const imgbbResponse = await new Promise((resolve, reject) => {
+                const req = https.request(options, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
+                    res.on('end', () => {
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    });
+                });
+
+                req.on('error', (error) => {
+                    reject(error);
+                });
+
+                req.write(postData.toString());
+                req.end();
+            });
+
+            if (!imgbbResponse.success) {
+                throw new Error('Ошибка при загрузке изображения на ImgBB');
+            }
+
+            imageUrl = imgbbResponse.data.url;
+        }
+
+        // Формируем SQL запрос
+        const updateFields = [];
+        const updateValues = [];
         
-        res.json({ success: true, message: 'Проект успешно обновлен' });
+        if (projects_title) {
+            updateFields.push('projects_title = ?');
+            updateValues.push(projects_title);
+        }
+        
+        if (projects_description) {
+            updateFields.push('projects_description = ?');
+            updateValues.push(projects_description);
+        }
+        
+        if (imageUrl) {
+            updateFields.push('projects_background = ?');
+            updateValues.push(imageUrl);
+        }
+
+        // Если нет полей для обновления, возвращаем ошибку
+        if (updateFields.length === 0) {
+            return res.status(400).json({ error: 'Нет данных для обновления' });
+        }
+
+        // Добавляем id в конец массива значений
+        updateValues.push(id);
+
+        // Формируем финальный SQL запрос
+        const updateQuery = `UPDATE projects SET ${updateFields.join(', ')} WHERE id = ?`;
+
+        console.log('SQL Query:', updateQuery);
+        console.log('Values:', updateValues);
+
+        // Выполняем обновление
+        db.query(updateQuery, updateValues, (err, result) => {
+            if (err) {
+                console.error("Ошибка при обновлении проекта:", err);
+                return res.status(500).json({ error: 'Ошибка при обновлении проекта' });
+            }
+            res.json({ 
+                success: true,
+                message: 'Проект успешно обновлен',
+                data: { id, projects_title, projects_description, projects_background: imageUrl }
+            });
+        });
     } catch (error) {
-        console.error('Ошибка при обновлении проекта:', error);
-        res.status(500).json({ success: false, error: 'Ошибка при обновлении проекта' });
+        console.error("Ошибка при обработке запроса /projects/:id:", error);
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
