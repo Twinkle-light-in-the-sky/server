@@ -28,14 +28,13 @@ const https = require('https');
 const app = express();
 
 // Настройка CORS
-const corsOptions = {
-    origin: ['http://localhost:3000', 'https://startset-app.vercel.app', 'https://startset-app.vercel.app/'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-    preflightContinue: false,
-    optionsSuccessStatus: 204
-};
+app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400 // 24 часа
+}));
 
 app.use(cors(corsOptions));
 
@@ -1170,24 +1169,128 @@ app.delete('/services/:id', async (req, res) => {
 // Эндпоинт для создания проекта
 app.post('/projects', upload.single('projects_background'), async (req, res) => {
     try {
-        const { projects_title, projects_description } = req.body;
-        const imageUrl = req.file ? req.file.filename : null;
+        console.log('Получен запрос на создание проекта:', {
+            body: req.body,
+            file: req.file ? {
+                fieldname: req.file.fieldname,
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+                size: req.file.size,
+                buffer: req.file.buffer ? 'Buffer present' : 'No buffer'
+            } : 'No file'
+        });
 
-        const query = 'INSERT INTO projects (projects_title, projects_description, projects_background) VALUES (?, ?, ?)';
-        db.query(query, [projects_title, projects_description, imageUrl], (err, result) => {
-            if (err) {
-                console.error('Ошибка при создании проекта:', err);
-                return res.status(500).json({ error: 'Ошибка при создании проекта' });
+        const { projects_title, projects_description } = req.body;
+        let imageUrl = null;
+
+        // Проверяем наличие обязательных полей
+        if (!projects_title || !projects_description) {
+            console.error('Отсутствуют обязательные поля:', { projects_title, projects_description });
+            return res.status(400).json({ 
+                success: false,
+                error: 'Пожалуйста, заполните все обязательные поля (название и описание)'
+            });
+        }
+
+        // Если загружено изображение
+        if (req.file && req.file.buffer) {
+            try {
+                console.log('Начинаем загрузку изображения на ImgBB');
+                // Конвертируем буфер в base64
+                const base64Image = req.file.buffer.toString('base64');
+                console.log('Изображение конвертировано в base64');
+
+                // Загружаем изображение на ImgBB
+                const postData = new URLSearchParams();
+                postData.append('image', base64Image);
+                postData.append('key', process.env.IMGBB_API_KEY);
+
+                const options = {
+                    hostname: 'api.imgbb.com',
+                    path: '/1/upload',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                };
+
+                console.log('Отправляем запрос к ImgBB API');
+                const imgbbResponse = await new Promise((resolve, reject) => {
+                    const req = https.request(options, (res) => {
+                        let data = '';
+                        res.on('data', (chunk) => {
+                            data += chunk;
+                        });
+                        res.on('end', () => {
+                            try {
+                                const parsedData = JSON.parse(data);
+                                console.log('Получен ответ от ImgBB:', parsedData);
+                                resolve(parsedData);
+                            } catch (e) {
+                                console.error('Ошибка парсинга ответа ImgBB:', e);
+                                reject(e);
+                            }
+                        });
+                    });
+
+                    req.on('error', (error) => {
+                        console.error('Ошибка запроса к ImgBB:', error);
+                        reject(error);
+                    });
+
+                    req.write(postData.toString());
+                    req.end();
+                });
+
+                if (!imgbbResponse.success) {
+                    console.error('Ошибка от ImgBB:', imgbbResponse);
+                    throw new Error('Ошибка при загрузке изображения на ImgBB');
+                }
+
+                imageUrl = imgbbResponse.data.url;
+                console.log('Изображение успешно загружено:', imageUrl);
+            } catch (imgError) {
+                console.error('Ошибка при обработке изображения:', imgError);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
+                });
             }
+        } else {
+            console.log('Изображение не было предоставлено');
+        }
+
+        // Создаем новый проект в базе данных
+        console.log('Создаем запись в БД:', { projects_title, projects_description, imageUrl });
+        const insertQuery = 'INSERT INTO projects (projects_title, projects_description, projects_background) VALUES (?, ?, ?)';
+        
+        db.query(insertQuery, [projects_title, projects_description, imageUrl], (err, result) => {
+            if (err) {
+                console.error("Ошибка при создании проекта в БД:", err);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при создании проекта в базе данных'
+                });
+            }
+            
+            console.log('Проект успешно создан:', result);
             res.json({ 
-                success: true, 
+                success: true,
                 message: 'Проект успешно создан',
-                projectId: result.insertId 
+                data: { 
+                    id: result.insertId,
+                    projects_title,
+                    projects_description,
+                    projects_background: imageUrl
+                }
             });
         });
     } catch (error) {
-        console.error('Ошибка при обработке запроса:', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        console.error("Ошибка при обработке запроса /projects:", error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Внутренняя ошибка сервера. Пожалуйста, попробуйте позже.'
+        });
     }
 });
 
