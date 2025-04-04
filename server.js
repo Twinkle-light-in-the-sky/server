@@ -1457,6 +1457,84 @@ app.delete('/projects/:id', async (req, res) => {
     }
 });
 
+// Обновление преимущества
+app.put('/benefits/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { benefit_title, benefit_description } = req.body;
+        console.log('Обновление преимущества:', { id, benefit_title, benefit_description });
+
+        // Проверяем существование преимущества
+        const checkQuery = 'SELECT * FROM benefits WHERE id = ?';
+        const benefit = await new Promise((resolve, reject) => {
+            db.query(checkQuery, [id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при проверке преимущества:', err);
+                    reject(err);
+                } else {
+                    resolve(results[0]);
+                }
+            });
+        });
+
+        if (!benefit) {
+            console.log('Преимущество не найдено:', { id });
+            return res.status(404).json({
+                success: false,
+                error: 'Преимущество не найдено'
+            });
+        }
+
+        // Формируем SQL запрос
+        const updateFields = [];
+        const updateValues = [];
+        
+        if (benefit_title) {
+            updateFields.push('benefit_title = ?');
+            updateValues.push(benefit_title);
+        }
+        
+        if (benefit_description) {
+            updateFields.push('benefit_description = ?');
+            updateValues.push(benefit_description);
+        }
+
+        // Если нет полей для обновления, возвращаем ошибку
+        if (updateFields.length === 0) {
+            return res.status(400).json({ error: 'Нет данных для обновления' });
+        }
+
+        // Добавляем id в конец массива значений
+        updateValues.push(id);
+
+        // Формируем финальный SQL запрос
+        const updateQuery = `UPDATE benefits SET ${updateFields.join(', ')} WHERE id = ?`;
+
+        console.log('SQL Query:', updateQuery);
+        console.log('Values:', updateValues);
+
+        // Выполняем обновление
+        db.query(updateQuery, updateValues, (err, result) => {
+            if (err) {
+                console.error("Ошибка при обновлении преимущества:", err);
+                return res.status(500).json({ error: 'Ошибка при обновлении преимущества' });
+            }
+            res.json({ 
+                success: true,
+                message: 'Преимущество успешно обновлено',
+                data: { 
+                    id, 
+                    benefit_title, 
+                    benefit_description
+                }
+            });
+        });
+    } catch (error) {
+        console.error("Ошибка при обработке запроса /benefits/:id:", error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
