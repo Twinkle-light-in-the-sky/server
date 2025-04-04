@@ -6,6 +6,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const path = require('path');
 require('./queries/databaseQueries');
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs');
 
 // Загружаем переменные окружения
 require('dotenv').config();
@@ -24,7 +27,6 @@ if (!process.env.IMGBB_API_KEY) {
 
 const multer = require('multer');
 const https = require('https');
-const fs = require('fs');
 const app = express();
 
 // Настройка CORS
@@ -1182,6 +1184,54 @@ app.delete('/services/:id', async (req, res) => {
             success: false,
             error: 'Ошибка при удалении услуги'
         });
+    }
+});
+
+// Эндпоинт для создания проекта
+app.post('/projects', upload.single('projects_background'), async (req, res) => {
+    try {
+        const { projects_title, projects_description } = req.body;
+        const imageUrl = req.file ? req.file.filename : null;
+
+        const query = 'INSERT INTO projects (projects_title, projects_description, projects_background) VALUES (?, ?, ?)';
+        db.query(query, [projects_title, projects_description, imageUrl], (err, result) => {
+            if (err) {
+                console.error('Ошибка при создании проекта:', err);
+                return res.status(500).json({ error: 'Ошибка при создании проекта' });
+            }
+            res.json({ 
+                success: true, 
+                message: 'Проект успешно создан',
+                projectId: result.insertId 
+            });
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Эндпоинт для обновления проекта
+app.put('/projects/:id', upload.single('projects_background'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { projects_title, projects_description } = req.body;
+        const imageUrl = req.file ? req.file.filename : null;
+
+        const query = 'UPDATE projects SET projects_title = ?, projects_description = ?, projects_background = ? WHERE id = ?';
+        db.query(query, [projects_title, projects_description, imageUrl, id], (err, result) => {
+            if (err) {
+                console.error('Ошибка при обновлении проекта:', err);
+                return res.status(500).json({ error: 'Ошибка при обновлении проекта' });
+            }
+            res.json({ 
+                success: true, 
+                message: 'Проект успешно обновлен'
+            });
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
 });
 
