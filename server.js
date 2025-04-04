@@ -6,7 +6,6 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const path = require('path');
 require('./queries/databaseQueries');
-const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
 
@@ -1211,27 +1210,28 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
     }
 });
 
-// Эндпоинт для обновления проекта
-app.put('/projects/:id', upload.single('projects_background'), async (req, res) => {
+// Обновление проекта
+app.put('/projects/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { projects_title, projects_description } = req.body;
-        const imageUrl = req.file ? req.file.filename : null;
+        const { projects_title, projects_description, projects_background } = req.body;
 
-        const query = 'UPDATE projects SET projects_title = ?, projects_description = ?, projects_background = ? WHERE id = ?';
-        db.query(query, [projects_title, projects_description, imageUrl, id], (err, result) => {
-            if (err) {
-                console.error('Ошибка при обновлении проекта:', err);
-                return res.status(500).json({ error: 'Ошибка при обновлении проекта' });
-            }
-            res.json({ 
-                success: true, 
-                message: 'Проект успешно обновлен'
-            });
-        });
+        const query = `
+            UPDATE projects 
+            SET projects_title = ?, 
+                projects_description = ?, 
+                projects_background = ?
+            WHERE id = ?
+        `;
+
+        const values = [projects_title, projects_description, projects_background, id];
+
+        await db.query(query, values);
+        
+        res.json({ success: true, message: 'Проект успешно обновлен' });
     } catch (error) {
-        console.error('Ошибка при обработке запроса:', error);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+        console.error('Ошибка при обновлении проекта:', error);
+        res.status(500).json({ success: false, error: 'Ошибка при обновлении проекта' });
     }
 });
 
@@ -1239,4 +1239,28 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
+
+// Функция для загрузки изображения на ImgBB
+async function uploadToImgBB(imageBuffer) {
+    try {
+        const formData = new FormData();
+        formData.append('image', imageBuffer.toString('base64'));
+        formData.append('key', process.env.IMGBB_API_KEY);
+
+        const response = await fetch('https://api.imgbb.com/1/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка при загрузке изображения на ImgBB');
+        }
+
+        const data = await response.json();
+        return data.data.url;
+    } catch (error) {
+        console.error('Ошибка при загрузке изображения:', error);
+        throw error;
+    }
+}
 
