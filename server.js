@@ -1402,6 +1402,61 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
     }
 });
 
+// Удаление проекта
+app.delete('/projects/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        console.log('Получен запрос на удаление проекта:', { id });
+
+        // Проверяем существование проекта
+        const checkQuery = 'SELECT * FROM projects WHERE id = ?';
+        const project = await new Promise((resolve, reject) => {
+            db.query(checkQuery, [id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при проверке проекта:', err);
+                    reject(err);
+                } else {
+                    resolve(results[0]);
+                }
+            });
+        });
+
+        if (!project) {
+            console.log('Проект не найден:', { id });
+            return res.status(404).json({
+                success: false,
+                error: 'Проект не найден'
+            });
+        }
+
+        // Удаляем проект
+        const deleteQuery = 'DELETE FROM projects WHERE id = ?';
+        await new Promise((resolve, reject) => {
+            db.query(deleteQuery, [id], (err, result) => {
+                if (err) {
+                    console.error('Ошибка при удалении проекта:', err);
+                    reject(err);
+                } else {
+                    resolve(result);
+                }
+            });
+        });
+
+        console.log('Проект успешно удален:', { id });
+        res.json({
+            success: true,
+            message: 'Проект успешно удален'
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса на удаление:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при удалении проекта'
+        });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
