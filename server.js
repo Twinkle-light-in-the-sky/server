@@ -412,6 +412,54 @@ app.get('/benefits', async (req, res) => {
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
+
+// Создание нового преимущества
+app.post('/benefits', async (req, res) => {
+    try {
+        console.log('Получен запрос на создание преимущества:', req.body);
+        const { benefit_title, benefit_description } = req.body;
+
+        // Проверяем наличие обязательных полей
+        if (!benefit_title?.trim() || !benefit_description?.trim()) {
+            console.error('Отсутствуют обязательные поля:', { benefit_title, benefit_description });
+            return res.status(400).json({
+                success: false,
+                error: 'Пожалуйста, заполните все обязательные поля (название и описание)'
+            });
+        }
+
+        // Создаем новое преимущество в базе данных
+        const insertQuery = 'INSERT INTO benefits (benefit_title, benefit_description) VALUES (?, ?)';
+        
+        db.query(insertQuery, [benefit_title.trim(), benefit_description.trim()], (err, result) => {
+            if (err) {
+                console.error("Ошибка при создании преимущества в БД:", err);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Ошибка при создании преимущества в базе данных'
+                });
+            }
+            
+            console.log('Преимущество успешно создано:', result);
+            res.json({
+                success: true,
+                message: 'Преимущество успешно создано',
+                data: {
+                    id: result.insertId,
+                    benefit_title: benefit_title.trim(),
+                    benefit_description: benefit_description.trim()
+                }
+            });
+        });
+    } catch (error) {
+        console.error("Ошибка при создании преимущества:", error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка сервера'
+        });
+    }
+});
+
 app.get('/orderstatuses', async (req, res) => {
     try {
         const getStatusesQuery = 'SELECT * FROM order_statuses';
