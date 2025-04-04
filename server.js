@@ -28,16 +28,19 @@ const https = require('https');
 const app = express();
 
 // Настройка CORS
-app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400 // 24 часа
-}));
+const corsOptions = {
+    origin: ['http://localhost:3000', 'https://startset-app.vercel.app', 'https://startset-app.vercel.app/'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+};
 
-// Добавляем middleware для обработки preflight запросов
-app.options('*', cors());
+app.use(cors(corsOptions));
+
+// Обработка preflight запросов
+app.options('*', cors(corsOptions));
 
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
