@@ -63,7 +63,7 @@ const corsOptions = {
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'credentials', 'user-agent'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'credentials', 'user-agent', 'Access-Control-Allow-Origin'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: true,
     maxAge: 86400 // 24 часа
@@ -87,10 +87,15 @@ app.use((req, res, next) => {
     });
 
     // Устанавливаем заголовки CORS
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    const origin = req.headers.origin;
+    if (origin) {
+        res.header('Access-Control-Allow-Origin', origin);
+    } else {
+        res.header('Access-Control-Allow-Origin', '*');
+    }
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, user-agent');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, user-agent, Access-Control-Allow-Origin');
     res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
@@ -1831,6 +1836,45 @@ app.get('/service_addons', async (req, res) => {
     }
 });
 
+// Создание таблицы templates, если она не существует
+const createTemplatesTable = `
+    CREATE TABLE IF NOT EXISTS templates (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        preview_url VARCHAR(255),
+        site_type VARCHAR(50) NOT NULL,
+        price DECIMAL(10, 2) NOT NULL,
+        service_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (service_id) REFERENCES service(id)
+    )
+`;
+
+db.query(createTemplatesTable, (err) => {
+    if (err) {
+        console.error('Ошибка при создании таблицы templates:', err);
+    } else {
+        console.log('Таблица templates создана или уже существует');
+    }
+});
+
+// Обновление service_id для всех шаблонов
+const updateTemplatesServiceId = `
+    UPDATE templates 
+    SET service_id = 1 
+    WHERE service_id IS NULL
+`;
+
+db.query(updateTemplatesServiceId, (err) => {
+    if (err) {
+        console.error('Ошибка при обновлении service_id для шаблонов:', err);
+    } else {
+        console.log('service_id обновлен для всех шаблонов');
+    }
+});
+
 // Получение шаблонов сайтов
 app.get('/templates', (req, res) => {
     const { service_id } = req.query;
@@ -1861,7 +1905,30 @@ app.get('/templates', (req, res) => {
             console.error('Ошибка при получении шаблонов:', err);
             return res.status(500).json({ error: 'Ошибка при получении шаблонов' });
         }
-        res.json(results);
+        console.log('Получены шаблоны:', results);
+        res.json({ data: results });
+    });
+});
+
+// Получение цен на услуги
+app.get('/service_pricing', (req, res) => {
+    const query = `
+        SELECT 
+            service_type,
+            base_price,
+            price_per_block,
+            min_blocks,
+            max_blocks
+        FROM service_pricing
+        WHERE is_active = 1
+    `;
+
+    db.query(query, (err, results) => {
+        if (err) {
+            console.error('Ошибка при получении цен:', err);
+            return res.status(500).json({ error: 'Ошибка при получении цен' });
+        }
+        res.json({ data: results });
     });
 });
 
