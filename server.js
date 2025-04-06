@@ -1866,13 +1866,28 @@ app.get('/site-orders-stats', async (req, res) => {
 
 // Получение всех дополнительных услуг
 app.get('/service_addons', (req, res) => {
-    const query = 'SELECT * FROM service_addons WHERE is_active = 1';
-    db.query(query, (err, results) => {
+    const { service_id } = req.query;
+    let query = 'SELECT * FROM service_addons WHERE is_active = 1';
+    const params = [];
+    
+    if (service_id) {
+        query += ' AND service_id = ?';
+        params.push(service_id);
+    }
+    
+    db.query(query, params, (err, results) => {
         if (err) {
             console.error('Ошибка при получении доп. услуг:', err);
-            return res.status(500).json({ error: 'Ошибка сервера' });
+            return res.status(500).json({ 
+                success: false,
+                message: 'Ошибка при получении дополнительных услуг',
+                error: err.message 
+            });
         }
-        res.json(results);
+        res.json({
+            success: true,
+            data: results
+        });
     });
 });
 
@@ -1892,6 +1907,15 @@ app.get('/templates', (req, res) => {
     
     console.log('Выполняется запрос:', { query, params });
     
+    // Добавляем CORS-заголовки
+    const origin = req.headers.origin;
+    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+    }
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+    
     db.query(query, params, (err, results) => {
         if (err) {
             console.error('Ошибка при получении шаблонов:', err);
@@ -1903,16 +1927,6 @@ app.get('/templates', (req, res) => {
         }
         
         console.log('Получены шаблоны:', results);
-        
-        // Добавляем CORS-заголовки
-        const origin = req.headers.origin;
-        if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-            res.header('Access-Control-Allow-Origin', origin);
-            res.header('Access-Control-Allow-Credentials', 'true');
-        }
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
-        
         res.json({
             success: true,
             data: results
