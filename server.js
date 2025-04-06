@@ -516,88 +516,111 @@ app.post('/createOrder', async (req, res) => {
             });
         }
 
-        // Проверяем существование шаблона, если он указан
-        if (template_id) {
-            const checkTemplateQuery = 'SELECT id FROM service_templates WHERE id = ?';
+        // Проверяем существование шаблона в таблице templates
+        const checkTemplateQuery = 'SELECT * FROM templates WHERE id = ?';
+        const [template] = await new Promise((resolve, reject) => {
             db.query(checkTemplateQuery, [template_id], (err, results) => {
                 if (err) {
                     console.error('Ошибка при проверке шаблона:', err);
-                    return res.status(500).json({ 
-                        success: false,
-                        message: 'Ошибка при проверке шаблона'
-                    });
+                    reject(err);
+                } else {
+                    resolve(results);
                 }
-
-                if (results.length === 0) {
-                    return res.status(400).json({ 
-                        success: false,
-                        message: 'Указанный шаблон не существует'
-                    });
-                }
-
-                // Если шаблон существует, продолжаем создание заказа
-                createOrder();
             });
-        } else {
-            // Если шаблон не указан, создаем заказ без него
-            createOrder();
+        });
+
+        if (!template) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Указанный шаблон не существует'
+            });
         }
 
-        function createOrder() {
-            // Подготавливаем значения для вставки
-            const values = [
-                project_name,
-                user_id,
+        // Добавляем шаблон в service_templates, если его там нет
+        const insertTemplateQuery = `
+            INSERT INTO service_templates (id, name, description, site_type, price, service_id)
+            SELECT ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (SELECT 1 FROM service_templates WHERE id = ?)
+        `;
+        
+        await new Promise((resolve, reject) => {
+            db.query(insertTemplateQuery, [
+                template.id,
+                template.name,
+                template.description,
+                template.site_type,
+                template.price,
                 service_id,
-                template_id || null,
-                site_type || null,
-                blocks_count || null,
-                price || 0,
-                additional_info || null,
-                need_receipt ? 1 : 0,
-                status_id,
-                executor_id,
-                order_date
-            ];
+                template.id
+            ], (err, result) => {
+                if (err) {
+                    console.error('Ошибка при добавлении шаблона:', err);
+                    reject(err);
+                } else {
+                    resolve(result);
+                }
+            });
+        });
 
-            console.log('Подготовленные значения для вставки:', values);
+        // Создаем заказ
+        const insertQuery = `
+            INSERT INTO orders (
+                project_name, user_id, service_id, template_id, 
+                site_type, blocks_count, price, additional_info,
+                need_receipt, status_id, executor_id, order_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
 
-            const insertQuery = `
-                INSERT INTO orders (
-                    project_name, user_id, service_id, template_id, 
-                    site_type, blocks_count, price, additional_info,
-                    need_receipt, status_id, executor_id, order_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
+        const values = [
+            project_name,
+            user_id,
+            service_id,
+            template_id,
+            site_type,
+            blocks_count,
+            price,
+            additional_info,
+            need_receipt ? 1 : 0,
+            status_id,
+            executor_id,
+            order_date
+        ];
 
+        console.log('Подготовленные значения для вставки:', values);
+
+        const result = await new Promise((resolve, reject) => {
             db.query(insertQuery, values, (err, result) => {
                 if (err) {
                     console.error('Ошибка при создании заказа:', err);
-                    return res.status(500).json({ 
-                        success: false,
-                        message: 'Ошибка при создании заказа в базе данных'
-                    });
+                    reject(err);
+                } else {
+                    resolve(result);
                 }
-
-                // Добавляем запись в историю статусов
-                const historyQuery = `
-                    INSERT INTO order_status_history (order_id, status_id, comment) 
-                    VALUES (?, ?, 'Заказ создан')
-                `;
-
-                db.query(historyQuery, [result.insertId, status_id], (err) => {
-                    if (err) {
-                        console.error('Ошибка при добавлении в историю:', err);
-                    }
-                });
-
-                res.json({
-                    success: true,
-                    orderId: result.insertId,
-                    message: 'Заказ успешно создан'
-                });
             });
-        }
+        });
+
+        // Добавляем запись в историю статусов
+        const historyQuery = `
+            INSERT INTO order_status_history (order_id, status_id, comment) 
+            VALUES (?, ?, 'Заказ создан')
+        `;
+
+        await new Promise((resolve, reject) => {
+            db.query(historyQuery, [result.insertId, status_id], (err) => {
+                if (err) {
+                    console.error('Ошибка при добавлении в историю:', err);
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+
+        res.json({
+            success: true,
+            orderId: result.insertId,
+            message: 'Заказ успешно создан'
+        });
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
         res.status(500).json({ 
