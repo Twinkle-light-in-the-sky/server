@@ -526,6 +526,18 @@ app.post('/createOrder', async (req, res) => {
                 return res.status(500).json({ message: 'Ошибка при создании заказа' });
             }
 
+            // Добавляем запись в историю статусов
+            const historyQuery = `
+                INSERT INTO order_status_history (order_id, status_id, comment) 
+                VALUES (?, 1, 'Заказ создан')
+            `;
+
+            db.query(historyQuery, [result.insertId], (err) => {
+                if (err) {
+                    console.error('Ошибка при добавлении в историю:', err);
+                }
+            });
+
             res.json({
                 success: true,
                 orderId: result.insertId,
@@ -533,8 +545,8 @@ app.post('/createOrder', async (req, res) => {
             });
         });
     } catch (error) {
-        console.error('Ошибка при создании заказа:', error);
-        res.status(500).json({ message: 'Ошибка сервера при создании заказа' });
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ message: 'Внутренняя ошибка сервера' });
     }
 });
 
