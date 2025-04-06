@@ -71,13 +71,6 @@ app.options('*', cors(corsOptions));
 
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
-    console.log('Incoming request:', {
-        method: req.method,
-        path: req.path,
-        headers: req.headers,
-        body: req.body
-    });
-
     const origin = req.headers.origin;
     if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
@@ -1873,23 +1866,13 @@ app.get('/site-orders-stats', async (req, res) => {
 
 // Получение всех дополнительных услуг
 app.get('/service_addons', (req, res) => {
-    const query = `
-        SELECT 
-            id,
-            name,
-            description,
-            price,
-            is_active
-        FROM service_addons
-        WHERE is_active = 1
-    `;
-
+    const query = 'SELECT * FROM service_addons WHERE is_active = 1';
     db.query(query, (err, results) => {
         if (err) {
             console.error('Ошибка при получении доп. услуг:', err);
-            return res.status(500).json({ error: 'Ошибка при получении доп. услуг' });
+            return res.status(500).json({ error: 'Ошибка сервера' });
         }
-        res.json({ data: results });
+        res.json(results);
     });
 });
 
@@ -1987,6 +1970,134 @@ db.query(dropForeignKeyQuery, (err) => {
             }
         });
     }
+});
+
+// Создание заказа с дополнительными услугами
+app.post('/orders', (req, res) => {
+    const { 
+        project_name, 
+        site_type, 
+        blocks_count, 
+        template_name, 
+        service_id, 
+        user_id, 
+        additional_info, 
+        need_receipt, 
+        price,
+        selected_addons 
+    } = req.body;
+
+    // Проверяем существование пользователя
+    const checkUserQuery = 'SELECT id FROM user WHERE id = ?';
+    db.query(checkUserQuery, [user_id], (err, results) => {
+        if (err) {
+            console.error('Ошибка при проверке пользователя:', err);
+            return res.status(500).json({ error: 'Ошибка сервера' });
+        }
+        
+        if (results.length === 0) {
+            return res.status(400).json({ error: 'Пользователь не найден' });
+        }
+
+        const orderQuery = `
+            INSERT INTO orders (
+                project_name, 
+                site_type, 
+                blocks_count, 
+                template_name, 
+                service_id, 
+                user_id, 
+                additional_info, 
+                need_receipt, 
+                price, 
+                order_date, 
+                status_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1)
+        `;
+
+        const orderValues = [
+            project_name, 
+            site_type, 
+            blocks_count, 
+            template_name, 
+            service_id, 
+            user_id, 
+            additional_info, 
+            need_receipt, 
+            price
+        ];
+
+        db.query(orderQuery, orderValues, (err, result) => {
+            if (err) {
+                console.error('Ошибка при создании заказа:', err);
+                return res.status(500).json({ error: 'Ошибка сервера' });
+            }
+
+            const orderId = result.insertId;
+
+            // Если есть выбранные доп. услуги, добавляем их
+            if (selected_addons && selected_addons.length > 0) {
+                const addonQuery = `
+                    INSERT INTO order_addons (order_id, addon_id, price_at_time) 
+                    SELECT ?, id, price 
+                    FROM service_addons 
+                    WHERE id IN (?)
+                `;
+
+                db.query(addonQuery, [orderId, selected_addons], (err) => {
+                    if (err) {
+                        console.error('Ошибка при добавлении доп. услуг:', err);
+                        return res.status(500).json({ error: 'Ошибка сервера' });
+                    }
+                });
+            }
+
+            // Добавляем запись в историю статусов
+            const historyQuery = `
+                INSERT INTO order_status_history (order_id, status_id, comment) 
+                VALUES (?, 1, 'Заказ создан')
+            `;
+
+            db.query(historyQuery, [orderId], (err) => {
+                if (err) {
+                    console.error('Ошибка при добавлении в историю:', err);
+                    return res.status(500).json({ error: 'Ошибка сервера' });
+                }
+            });
+
+            res.json({ 
+                success: true, 
+                orderId: orderId,
+                message: 'Заказ успешно создан' 
+            });
+        });
+    });
+});
+
+// Получение истории статусов заказа
+app.get('/orders/:id/history', (req, res) => {
+    const orderId = req.params.id;
+    
+    const query = `
+        SELECT 
+            osh.id,
+            osh.status_id,
+            os.status_name,
+            osh.comment,
+            osh.created_at
+        FROM order_status_history osh
+        JOIN order_statuses os ON osh.status_id = os.id
+        WHERE osh.order_id = ?
+        ORDER BY osh.created_at DESC
+    `;
+
+    db.query(query, [orderId], (err, results) => {
+        if (err) {
+            console.error('Ошибка при получении истории:', err);
+            return res.status(500).json({ error: 'Ошибка сервера' });
+        }
+        res.json(results);
+    });
 });
 
 const PORT = process.env.PORT || 3001;
