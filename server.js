@@ -1805,6 +1805,40 @@ app.get('/service_addons', async (req, res) => {
     }
 });
 
+// Получение шаблонов сайтов
+app.get('/templates', (req, res) => {
+    const { service_id } = req.query;
+    
+    let query = `
+        SELECT 
+            t.id,
+            t.name,
+            t.description,
+            t.preview_url,
+            t.site_type,
+            t.price,
+            t.service_id
+        FROM templates t
+    `;
+
+    const queryParams = [];
+
+    if (service_id) {
+        query += ' WHERE t.service_id = ?';
+        queryParams.push(service_id);
+    }
+
+    query += ' ORDER BY t.site_type, t.name';
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            console.error('Ошибка при получении шаблонов:', err);
+            return res.status(500).json({ error: 'Ошибка при получении шаблонов' });
+        }
+        res.json(results);
+    });
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
