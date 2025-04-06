@@ -1899,11 +1899,11 @@ app.get('/templates', (req, res) => {
     
     console.log('Получен запрос на шаблоны:', { service_id });
     
-    let query = 'SELECT * FROM templates WHERE is_active = 1';
+    let query = 'SELECT * FROM templates';
     const params = [];
     
     if (service_id) {
-        query += ' AND service_id = ?';
+        query += ' WHERE service_id = ?';
         params.push(service_id);
     }
     
