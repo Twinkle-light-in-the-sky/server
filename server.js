@@ -343,7 +343,7 @@ app.post('/logpage', async (req, res) => {
 
 app.get('/service', async (req, res) => {
     try {
-        const getServicesQuery = 'SELECT id, title, description, background_image, executor_id FROM services';
+        const getServicesQuery = 'SELECT id, title, description, background_image, executor_id, is_dark_theme FROM services';
         db.query(getServicesQuery, (err, results) => {
             if (err) {
                 console.error("Ошибка при получении данных услуг:", err);
@@ -363,7 +363,7 @@ app.get('/projects', async (req, res) => {
         
         const projects = await new Promise((resolve, reject) => {
             db.query('SELECT id, projects_title, projects_description, projects_background, is_dark_theme FROM projects ORDER BY id ASC', (err, results) => {
-                if (err) {
+            if (err) {
                     console.error('Ошибка при получении проектов:', err);
                     reject(err);
                 } else {
@@ -909,7 +909,7 @@ app.post('/services/:id/upload-image', upload.single('image'), async (req, res) 
 app.put('/services/:id', upload.single('image'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description } = req.body;
+        const { title, description, is_dark_theme } = req.body;
         let imageUrl = null;
 
         // Если загружено новое изображение
@@ -981,6 +981,11 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
             updateValues.push(imageUrl);
         }
 
+        if (is_dark_theme !== undefined) {
+            updateFields.push('is_dark_theme = ?');
+            updateValues.push(is_dark_theme === 'true' ? 1 : 0);
+        }
+
         // Если нет полей для обновления, возвращаем ошибку
         if (updateFields.length === 0) {
             return res.status(400).json({ error: 'Нет данных для обновления' });
@@ -1027,7 +1032,7 @@ app.post('/services', upload.single('image'), async (req, res) => {
             } : 'No file'
         });
 
-        const { title, description } = req.body;
+        const { title, description, is_dark_theme } = req.body;
         let imageUrl = null;
 
         // Проверяем наличие обязательных полей
@@ -1108,11 +1113,17 @@ app.post('/services', upload.single('image'), async (req, res) => {
         }
 
         // Создаем новую услугу в базе данных
-        console.log('Создаем запись в БД:', { title, description, imageUrl });
+        console.log('Создаем запись в БД:', { title, description, imageUrl, is_dark_theme });
         const defaultExecutorId = 1; // ID исполнителя по умолчанию
-        const insertQuery = 'INSERT INTO services (title, description, background_image, executor_id) VALUES (?, ?, ?, ?)';
+        const insertQuery = 'INSERT INTO services (title, description, background_image, executor_id, is_dark_theme) VALUES (?, ?, ?, ?, ?)';
         
-        db.query(insertQuery, [title, description, imageUrl, defaultExecutorId], (err, result) => {
+        db.query(insertQuery, [
+            title, 
+            description, 
+            imageUrl, 
+            defaultExecutorId, 
+            is_dark_theme === 'true' ? 1 : 0
+        ], (err, result) => {
             if (err) {
                 console.error("Ошибка при создании услуги в БД:", err);
                 return res.status(500).json({ 
@@ -1130,7 +1141,8 @@ app.post('/services', upload.single('image'), async (req, res) => {
                     title,
                     description,
                     background_image: imageUrl,
-                    executor_id: defaultExecutorId
+                    executor_id: defaultExecutorId,
+                    is_dark_theme: is_dark_theme === 'true'
                 }
             });
         });
