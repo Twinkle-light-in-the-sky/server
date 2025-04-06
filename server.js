@@ -1883,19 +1883,23 @@ app.get('/templates', (req, res) => {
         params.push(service_id);
     }
     
+    console.log('Выполняется запрос шаблонов:', { query, params });
+    
     db.query(query, params, (err, results) => {
         if (err) {
             console.error('Ошибка при получении шаблонов:', err);
-            res.status(500).json({ 
+            return res.status(500).json({ 
                 success: false,
-                message: 'Ошибка при получении шаблонов'
-            });
-        } else {
-            res.json({
-                success: true,
-                data: results
+                message: 'Ошибка при получении шаблонов',
+                error: err.message
             });
         }
+        
+        console.log('Получены шаблоны:', results);
+        res.json({
+            success: true,
+            data: results
+        });
     });
 });
 
