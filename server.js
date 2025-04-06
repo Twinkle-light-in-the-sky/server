@@ -1651,6 +1651,107 @@ app.delete('/benefits/:id', async (req, res) => {
     }
 });
 
+// Получение всех заказов с детальной информацией
+app.get('/site-orders', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                o.*,
+                s.title as service_name,
+                st.name as template_name,
+                os.status_name,
+                e.fullname as executor_name,
+                u.username as customer_name
+            FROM orders o
+            LEFT JOIN services s ON o.services_id = s.id
+            LEFT JOIN service_templates st ON o.template_id = st.id
+            LEFT JOIN order_statuses os ON o.status_id = os.id
+            LEFT JOIN executors e ON o.executor_id = e.id
+            LEFT JOIN user u ON o.user_id = u.id
+            ORDER BY o.order_date DESC
+        `;
+
+        db.query(query, (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении заказов:', err);
+                return res.status(500).json({ error: 'Ошибка при получении заказов' });
+            }
+            res.json(results);
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Получение детальной информации о конкретном заказе
+app.get('/site-orders/:id', async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        const query = `
+            SELECT 
+                o.*,
+                s.title as service_name,
+                st.name as template_name,
+                os.status_name,
+                e.fullname as executor_name,
+                u.username as customer_name,
+                GROUP_CONCAT(sa.name) as addons
+            FROM orders o
+            LEFT JOIN services s ON o.services_id = s.id
+            LEFT JOIN service_templates st ON o.template_id = st.id
+            LEFT JOIN order_statuses os ON o.status_id = os.id
+            LEFT JOIN executors e ON o.executor_id = e.id
+            LEFT JOIN user u ON o.user_id = u.id
+            LEFT JOIN order_addons oa ON o.id = oa.order_id
+            LEFT JOIN service_addons sa ON oa.addon_id = sa.id
+            WHERE o.id = ?
+            GROUP BY o.id
+        `;
+
+        db.query(query, [orderId], (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении заказа:', err);
+                return res.status(500).json({ error: 'Ошибка при получении заказа' });
+            }
+            if (results.length === 0) {
+                return res.status(404).json({ error: 'Заказ не найден' });
+            }
+            res.json(results[0]);
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// Получение статистики по заказам
+app.get('/site-orders-stats', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                COUNT(*) as total_orders,
+                SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as new_orders,
+                SUM(CASE WHEN status_id = 2 THEN 1 ELSE 0 END) as in_progress_orders,
+                SUM(CASE WHEN status_id = 3 THEN 1 ELSE 0 END) as completed_orders,
+                AVG(price) as average_price,
+                SUM(price) as total_revenue
+            FROM orders
+        `;
+
+        db.query(query, (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении статистики:', err);
+                return res.status(500).json({ error: 'Ошибка при получении статистики' });
+            }
+            res.json(results[0]);
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса:', error);
+        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
