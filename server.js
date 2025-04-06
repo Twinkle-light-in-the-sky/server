@@ -486,45 +486,52 @@ app.post('/createOrder', async (req, res) => {
         console.log('Запрос получен:', req.body);
 
         const { 
-            title_order, 
+            project_name, 
             user_id, 
             service_id, 
             template_id,
             site_type,
             blocks_count,
-            addon_ids,
-            total_price,
-            additional_info
+            price,
+            additional_info,
+            need_receipt,
+            status_id,
+            executor_id,
+            order_date
         } = req.body;
 
-        if (!title_order || !user_id || !service_id || !total_price) {
+        // Проверяем обязательные поля
+        if (!project_name || !user_id || !service_id || !executor_id || !status_id || !order_date) {
             console.error('Валидация не пройдена. Некоторые поля пусты или некорректного типа.');
             return res.status(400).json({ message: 'Не все обязательные поля заполнены' });
         }
 
-        const newOrder = await db.query(
-            'INSERT INTO orders (title_order, user_id, service_id, template_id, site_type, blocks_count, total_price, additional_info, status_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
-            [title_order, user_id, service_id, template_id, site_type, blocks_count, total_price, additional_info]
-        );
+        const insertQuery = `
+            INSERT INTO orders (
+                project_name, user_id, service_id, template_id, 
+                site_type, blocks_count, price, additional_info,
+                need_receipt, status_id, executor_id, order_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
 
-        if (newOrder.insertId) {
-            // Добавляем дополнительные услуги, если они есть
-            if (addon_ids && addon_ids.length > 0) {
-                const addonValues = addon_ids.map(addon_id => [newOrder.insertId, addon_id]);
-                await db.query(
-                    'INSERT INTO order_addons (order_id, addon_id) VALUES ?',
-                    [addonValues]
-                );
+        const values = [
+            project_name, user_id, service_id, template_id,
+            site_type, blocks_count, price, additional_info,
+            need_receipt ? 1 : 0, status_id, executor_id, order_date
+        ];
+
+        db.query(insertQuery, values, (err, result) => {
+            if (err) {
+                console.error('Ошибка при создании заказа:', err);
+                return res.status(500).json({ message: 'Ошибка при создании заказа' });
             }
 
             res.json({
                 success: true,
-                orderId: newOrder.insertId,
+                orderId: result.insertId,
                 message: 'Заказ успешно создан'
             });
-        } else {
-            throw new Error('Не удалось создать заказ');
-        }
+        });
     } catch (error) {
         console.error('Ошибка при создании заказа:', error);
         res.status(500).json({ message: 'Ошибка сервера при создании заказа' });
