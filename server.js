@@ -483,7 +483,7 @@ app.get('/orderstatuses', async (req, res) => {
 
 app.post('/createOrder', async (req, res) => {
     try {
-        console.log('Запрос получен:', req.body);
+        console.log('Получен запрос на создание заказа:', req.body);
 
         const { 
             project_name, 
@@ -502,9 +502,37 @@ app.post('/createOrder', async (req, res) => {
 
         // Проверяем обязательные поля
         if (!project_name || !user_id || !service_id || !executor_id || !status_id || !order_date) {
-            console.error('Валидация не пройдена. Некоторые поля пусты или некорректного типа.');
-            return res.status(400).json({ message: 'Не все обязательные поля заполнены' });
+            console.error('Отсутствуют обязательные поля:', {
+                project_name,
+                user_id,
+                service_id,
+                executor_id,
+                status_id,
+                order_date
+            });
+            return res.status(400).json({ 
+                success: false,
+                message: 'Не все обязательные поля заполнены'
+            });
         }
+
+        // Подготавливаем значения для вставки
+        const values = [
+            project_name,
+            user_id,
+            service_id,
+            template_id || null,
+            site_type || null,
+            blocks_count || null,
+            price || 0,
+            additional_info || null,
+            need_receipt ? 1 : 0,
+            status_id,
+            executor_id,
+            order_date
+        ];
+
+        console.log('Подготовленные значения для вставки:', values);
 
         const insertQuery = `
             INSERT INTO orders (
@@ -514,25 +542,22 @@ app.post('/createOrder', async (req, res) => {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
-        const values = [
-            project_name, user_id, service_id, template_id,
-            site_type, blocks_count, price, additional_info,
-            need_receipt ? 1 : 0, status_id, executor_id, order_date
-        ];
-
         db.query(insertQuery, values, (err, result) => {
             if (err) {
                 console.error('Ошибка при создании заказа:', err);
-                return res.status(500).json({ message: 'Ошибка при создании заказа' });
+                return res.status(500).json({ 
+                    success: false,
+                    message: 'Ошибка при создании заказа в базе данных'
+                });
             }
 
             // Добавляем запись в историю статусов
             const historyQuery = `
                 INSERT INTO order_status_history (order_id, status_id, comment) 
-                VALUES (?, 1, 'Заказ создан')
+                VALUES (?, ?, 'Заказ создан')
             `;
 
-            db.query(historyQuery, [result.insertId], (err) => {
+            db.query(historyQuery, [result.insertId, status_id], (err) => {
                 if (err) {
                     console.error('Ошибка при добавлении в историю:', err);
                 }
@@ -546,7 +571,10 @@ app.post('/createOrder', async (req, res) => {
         });
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
-        res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+        res.status(500).json({ 
+            success: false,
+            message: 'Внутренняя ошибка сервера'
+        });
     }
 });
 
