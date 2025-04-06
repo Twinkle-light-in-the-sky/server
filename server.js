@@ -549,7 +549,7 @@ app.get('/orders', async (req, res) => {
                    e.fullname as executor_name,
                    os.status_name
             FROM orders o
-            LEFT JOIN services s ON o.services_id = s.id
+            LEFT JOIN services s ON o.service_id = s.id
             LEFT JOIN executors e ON o.executor_id = e.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
             WHERE o.user_id = ?
