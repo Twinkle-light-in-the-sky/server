@@ -42,6 +42,7 @@ const upload = multer({
     }
 });
 
+// Настройка CORS
 const corsOptions = {
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -53,6 +54,7 @@ const corsOptions = {
 
 const app = express();
 
+// Применяем CORS ко всем маршрутам
 app.use(cors(corsOptions));
 
 // Обработка preflight запросов
