@@ -1657,25 +1657,19 @@ app.delete('/benefits/:id', async (req, res) => {
 app.get('/site-orders', async (req, res) => {
     try {
         const query = `
-            SELECT 
-                o.*,
-                s.title as service_name,
-                st.name as template_name,
-                os.status_name,
-                e.fullname as executor_name,
-                u.username as customer_name
+            SELECT o.*, 
+                   s.title as service_title,
+                   e.full_name as executor_name,
+                   os.status_name as status
             FROM orders o
-            LEFT JOIN services s ON o.services_id = s.id
-            LEFT JOIN service_templates st ON o.template_id = st.id
-            LEFT JOIN order_statuses os ON o.status_id = os.id
+            LEFT JOIN services s ON o.service_id = s.id
             LEFT JOIN executors e ON o.executor_id = e.id
-            LEFT JOIN user u ON o.user_id = u.id
-            ORDER BY o.order_date DESC
+            LEFT JOIN order_statuses os ON o.status_id = os.id
         `;
 
-        db.query(query, (err, results) => {
-            if (err) {
-                console.error('Ошибка при получении заказов:', err);
+        db.query(query, (error, results) => {
+            if (error) {
+                console.error('Ошибка при получении заказов:', error);
                 return res.status(500).json({ error: 'Ошибка при получении заказов' });
             }
             res.json(results);
