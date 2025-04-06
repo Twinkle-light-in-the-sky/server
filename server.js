@@ -516,59 +516,88 @@ app.post('/createOrder', async (req, res) => {
             });
         }
 
-        // Подготавливаем значения для вставки
-        const values = [
-            project_name,
-            user_id,
-            service_id,
-            template_id || null,
-            site_type || null,
-            blocks_count || null,
-            price || 0,
-            additional_info || null,
-            need_receipt ? 1 : 0,
-            status_id,
-            executor_id,
-            order_date
-        ];
+        // Проверяем существование шаблона, если он указан
+        if (template_id) {
+            const checkTemplateQuery = 'SELECT id FROM service_templates WHERE id = ?';
+            db.query(checkTemplateQuery, [template_id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при проверке шаблона:', err);
+                    return res.status(500).json({ 
+                        success: false,
+                        message: 'Ошибка при проверке шаблона'
+                    });
+                }
 
-        console.log('Подготовленные значения для вставки:', values);
+                if (results.length === 0) {
+                    return res.status(400).json({ 
+                        success: false,
+                        message: 'Указанный шаблон не существует'
+                    });
+                }
 
-        const insertQuery = `
-            INSERT INTO orders (
-                project_name, user_id, service_id, template_id, 
-                site_type, blocks_count, price, additional_info,
-                need_receipt, status_id, executor_id, order_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
+                // Если шаблон существует, продолжаем создание заказа
+                createOrder();
+            });
+        } else {
+            // Если шаблон не указан, создаем заказ без него
+            createOrder();
+        }
 
-        db.query(insertQuery, values, (err, result) => {
-            if (err) {
-                console.error('Ошибка при создании заказа:', err);
-                return res.status(500).json({ 
-                    success: false,
-                    message: 'Ошибка при создании заказа в базе данных'
-                });
-            }
+        function createOrder() {
+            // Подготавливаем значения для вставки
+            const values = [
+                project_name,
+                user_id,
+                service_id,
+                template_id || null,
+                site_type || null,
+                blocks_count || null,
+                price || 0,
+                additional_info || null,
+                need_receipt ? 1 : 0,
+                status_id,
+                executor_id,
+                order_date
+            ];
 
-            // Добавляем запись в историю статусов
-            const historyQuery = `
-                INSERT INTO order_status_history (order_id, status_id, comment) 
-                VALUES (?, ?, 'Заказ создан')
+            console.log('Подготовленные значения для вставки:', values);
+
+            const insertQuery = `
+                INSERT INTO orders (
+                    project_name, user_id, service_id, template_id, 
+                    site_type, blocks_count, price, additional_info,
+                    need_receipt, status_id, executor_id, order_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
-            db.query(historyQuery, [result.insertId, status_id], (err) => {
+            db.query(insertQuery, values, (err, result) => {
                 if (err) {
-                    console.error('Ошибка при добавлении в историю:', err);
+                    console.error('Ошибка при создании заказа:', err);
+                    return res.status(500).json({ 
+                        success: false,
+                        message: 'Ошибка при создании заказа в базе данных'
+                    });
                 }
-            });
 
-            res.json({
-                success: true,
-                orderId: result.insertId,
-                message: 'Заказ успешно создан'
+                // Добавляем запись в историю статусов
+                const historyQuery = `
+                    INSERT INTO order_status_history (order_id, status_id, comment) 
+                    VALUES (?, ?, 'Заказ создан')
+                `;
+
+                db.query(historyQuery, [result.insertId, status_id], (err) => {
+                    if (err) {
+                        console.error('Ошибка при добавлении в историю:', err);
+                    }
+                });
+
+                res.json({
+                    success: true,
+                    orderId: result.insertId,
+                    message: 'Заказ успешно создан'
+                });
             });
-        });
+        }
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
         res.status(500).json({ 
@@ -1825,9 +1854,9 @@ app.get('/service_addons', (req, res) => {
     });
 });
 
-// Создание таблицы templates, если она не существует
-const createTemplatesTable = `
-    CREATE TABLE IF NOT EXISTS templates (
+// Создание таблицы service_templates, если она не существует
+const createServiceTemplatesTable = `
+    CREATE TABLE IF NOT EXISTS service_templates (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         description TEXT,
@@ -1837,30 +1866,30 @@ const createTemplatesTable = `
         service_id INT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (service_id) REFERENCES service(id)
+        FOREIGN KEY (service_id) REFERENCES services(id)
     )
 `;
 
-db.query(createTemplatesTable, (err) => {
+db.query(createServiceTemplatesTable, (err) => {
     if (err) {
-        console.error('Ошибка при создании таблицы templates:', err);
+        console.error('Ошибка при создании таблицы service_templates:', err);
     } else {
-        console.log('Таблица templates создана или уже существует');
-    }
-});
-
-// Обновление service_id для всех шаблонов
-const updateTemplatesServiceId = `
-    UPDATE templates 
-    SET service_id = 1 
-    WHERE service_id IS NULL
-`;
-
-db.query(updateTemplatesServiceId, (err) => {
-    if (err) {
-        console.error('Ошибка при обновлении service_id для шаблонов:', err);
-    } else {
-        console.log('service_id обновлен для всех шаблонов');
+        console.log('Таблица service_templates создана или уже существует');
+        
+        // Добавляем шаблон, если его нет
+        const insertTemplateQuery = `
+            INSERT INTO service_templates (id, name, description, site_type, price, service_id)
+            SELECT 21, 'Классический лендинг', 'Стандартный одностраничный сайт с основными блоками', 'landing', 15000.00, 1
+            WHERE NOT EXISTS (SELECT 1 FROM service_templates WHERE id = 21)
+        `;
+        
+        db.query(insertTemplateQuery, (err) => {
+            if (err) {
+                console.error('Ошибка при добавлении шаблона:', err);
+            } else {
+                console.log('Шаблон успешно добавлен или уже существует');
+            }
+        });
     }
 });
 
