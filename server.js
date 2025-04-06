@@ -53,6 +53,17 @@ const corsOptions = {
 
 const app = express();
 
+// Добавляем middleware для логирования CORS
+app.use((req, res, next) => {
+    console.log('CORS Request:', {
+        origin: req.headers.origin,
+        method: req.method,
+        path: req.path,
+        headers: req.headers
+    });
+    next();
+});
+
 app.use(cors(corsOptions));
 
 // Обработка preflight запросов
@@ -77,6 +88,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
+        console.log('Handling OPTIONS request');
         return res.sendStatus(200);
     }
     next();
@@ -463,15 +475,25 @@ app.post('/benefits', async (req, res) => {
 
 app.get('/orderstatuses', async (req, res) => {
     try {
+        console.log('Получен запрос на получение статусов заказов');
+        
         const getStatusesQuery = 'SELECT * FROM order_statuses';
         db.query(getStatusesQuery, (err, results) => {
             if (err) {
                 console.error("Ошибка при получении статусов:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            
+            // Добавляем CORS-заголовки
+            const origin = req.headers.origin;
+            if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
+                res.header('Access-Control-Allow-Origin', origin);
+                res.header('Access-Control-Allow-Credentials', 'true');
+            }
+            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+            
+            console.log('Отправка статусов заказов:', results);
             res.json(results);
         });
     } catch (error) {
