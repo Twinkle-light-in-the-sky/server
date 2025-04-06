@@ -1748,6 +1748,22 @@ app.get('/site-orders-stats', async (req, res) => {
     }
 });
 
+app.get('/service_addons', async (req, res) => {
+    try {
+        const query = 'SELECT * FROM service_addons';
+        db.query(query, (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении дополнительных услуг:', err);
+                return res.status(500).json({ error: 'Ошибка при получении данных' });
+            }
+            res.json(results);
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса /service_addons:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
