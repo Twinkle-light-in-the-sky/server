@@ -45,10 +45,13 @@ const upload = multer({
 // Настройка CORS
 const corsOptions = {
     origin: function (origin, callback) {
+        console.log('CORS origin check:', origin);
         const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'];
         if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            console.log('Origin allowed:', origin);
             callback(null, true);
         } else {
+            console.log('Origin not allowed:', origin);
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -69,19 +72,34 @@ app.options('*', cors(corsOptions));
 
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
-        res.header('Access-Control-Allow-Origin', origin);
-        res.header('Access-Control-Allow-Credentials', 'true');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
-        res.header('Access-Control-Max-Age', '86400');
-    }
+    console.log('Incoming request:', {
+        method: req.method,
+        path: req.path,
+        origin: req.headers.origin,
+        headers: req.headers
+    });
+
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+    res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
+        console.log('Handling OPTIONS request');
         return res.sendStatus(200);
     }
     next();
+});
+
+// Добавляем обработку ошибок CORS
+app.use((err, req, res, next) => {
+    console.error('CORS error:', err);
+    if (err.name === 'CORS') {
+        res.status(403).json({ error: 'CORS error: ' + err.message });
+    } else {
+        next(err);
+    }
 });
 
 app.use(express.urlencoded({ extended: true }));
