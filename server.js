@@ -1748,15 +1748,56 @@ app.get('/site-orders-stats', async (req, res) => {
     }
 });
 
+// Получение всех дополнительных услуг
 app.get('/service_addons', async (req, res) => {
     try {
-        const query = 'SELECT * FROM service_addons';
-        db.query(query, (err, results) => {
+        console.log('Получен запрос на /service_addons');
+        
+        // Проверяем существование таблицы
+        const checkTableQuery = "SHOW TABLES LIKE 'service_addons'";
+        db.query(checkTableQuery, (err, results) => {
             if (err) {
-                console.error('Ошибка при получении дополнительных услуг:', err);
-                return res.status(500).json({ error: 'Ошибка при получении данных' });
+                console.error('Ошибка при проверке таблицы:', err);
+                return res.status(500).json({ error: 'Ошибка при проверке таблицы' });
             }
-            res.json(results);
+            
+            if (results.length === 0) {
+                console.log('Таблица service_addons не существует, создаем...');
+                const createTableQuery = `
+                    CREATE TABLE IF NOT EXISTS service_addons (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        price DECIMAL(10,2) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                `;
+                
+                db.query(createTableQuery, (err) => {
+                    if (err) {
+                        console.error('Ошибка при создании таблицы:', err);
+                        return res.status(500).json({ error: 'Ошибка при создании таблицы' });
+                    }
+                    
+                    console.log('Таблица service_addons создана');
+                    // Возвращаем пустой массив, так как таблица только что создана
+                    res.json([]);
+                });
+                return;
+            }
+            
+            console.log('Таблица service_addons существует');
+            const query = 'SELECT * FROM service_addons';
+            console.log('Выполняем SQL запрос:', query);
+            
+            db.query(query, (err, results) => {
+                if (err) {
+                    console.error('Ошибка при получении дополнительных услуг:', err);
+                    return res.status(500).json({ error: 'Ошибка при получении данных' });
+                }
+                console.log('Получены результаты:', results);
+                res.json(results);
+            });
         });
     } catch (error) {
         console.error('Ошибка при обработке запроса /service_addons:', error);
