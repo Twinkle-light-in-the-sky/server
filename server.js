@@ -47,7 +47,14 @@ const corsOptions = {
     origin: function (origin, callback) {
         console.log('CORS origin check:', origin);
         const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'];
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        
+        // Разрешаем запросы без origin (например, от TelegramBot)
+        if (!origin) {
+            console.log('Origin is undefined, allowing request');
+            return callback(null, true);
+        }
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
             console.log('Origin allowed:', origin);
             callback(null, true);
         } else {
@@ -56,7 +63,7 @@ const corsOptions = {
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'credentials'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'credentials', 'user-agent'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: true,
     maxAge: 86400 // 24 часа
@@ -79,10 +86,11 @@ app.use((req, res, next) => {
         headers: req.headers
     });
 
+    // Устанавливаем заголовки CORS
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, user-agent');
     res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
