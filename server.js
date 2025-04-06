@@ -1875,34 +1875,27 @@ app.get('/service_addons', (req, res) => {
 app.get('/templates', (req, res) => {
     const { service_id } = req.query;
     
-    let query = `
-        SELECT 
-            t.id,
-            t.name,
-            t.description,
-            t.preview_url,
-            t.site_type,
-            t.price,
-            t.service_id
-        FROM templates t
-    `;
-
-    const queryParams = [];
-
+    let query = 'SELECT * FROM templates WHERE is_active = 1';
+    const params = [];
+    
     if (service_id) {
-        query += ' WHERE t.service_id = ?';
-        queryParams.push(service_id);
+        query += ' AND service_id = ?';
+        params.push(service_id);
     }
-
-    query += ' ORDER BY t.site_type, t.name';
-
-    db.query(query, queryParams, (err, results) => {
+    
+    db.query(query, params, (err, results) => {
         if (err) {
             console.error('Ошибка при получении шаблонов:', err);
-            return res.status(500).json({ error: 'Ошибка при получении шаблонов' });
+            res.status(500).json({ 
+                success: false,
+                message: 'Ошибка при получении шаблонов'
+            });
+        } else {
+            res.json({
+                success: true,
+                data: results
+            });
         }
-        console.log('Получены шаблоны:', results);
-        res.json({ data: results });
     });
 });
 
@@ -1926,6 +1919,36 @@ app.get('/service_pricing', (req, res) => {
         }
         res.json({ data: results });
     });
+});
+
+// Удаляем существующую связь с service_templates
+const dropForeignKeyQuery = `
+    ALTER TABLE orders 
+    DROP FOREIGN KEY orders_ibfk_2
+`;
+
+db.query(dropForeignKeyQuery, (err) => {
+    if (err) {
+        console.error('Ошибка при удалении внешнего ключа:', err);
+    } else {
+        console.log('Внешний ключ успешно удален');
+        
+        // Создаем новую связь с таблицей templates
+        const addForeignKeyQuery = `
+            ALTER TABLE orders 
+            ADD CONSTRAINT orders_template_id_fk 
+            FOREIGN KEY (template_id) 
+            REFERENCES templates(id)
+        `;
+        
+        db.query(addForeignKeyQuery, (err) => {
+            if (err) {
+                console.error('Ошибка при создании нового внешнего ключа:', err);
+            } else {
+                console.log('Новый внешний ключ успешно создан');
+            }
+        });
+    }
 });
 
 const PORT = process.env.PORT || 3001;
