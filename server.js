@@ -42,28 +42,10 @@ const upload = multer({
     }
 });
 
-// Настройка CORS
 const corsOptions = {
-    origin: function (origin, callback) {
-        console.log('CORS origin check:', origin);
-        const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'];
-        
-        // Разрешаем запросы без origin (например, от TelegramBot)
-        if (!origin) {
-            console.log('Origin is undefined, allowing request');
-            return callback(null, true);
-        }
-
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            console.log('Origin allowed:', origin);
-            callback(null, true);
-        } else {
-            console.log('Origin not allowed:', origin);
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'credentials', 'user-agent', 'Access-Control-Allow-Origin'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: true,
     maxAge: 86400 // 24 часа
@@ -71,7 +53,6 @@ const corsOptions = {
 
 const app = express();
 
-// Применяем CORS ко всем маршрутам
 app.use(cors(corsOptions));
 
 // Обработка preflight запросов
@@ -82,37 +63,23 @@ app.use((req, res, next) => {
     console.log('Incoming request:', {
         method: req.method,
         path: req.path,
-        origin: req.headers.origin,
-        headers: req.headers
+        headers: req.headers,
+        body: req.body
     });
 
-    // Устанавливаем заголовки CORS
     const origin = req.headers.origin;
-    if (origin) {
+    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
-    } else {
-        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Credentials', 'true');
     }
-    res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, user-agent, Access-Control-Allow-Origin');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
     res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
-        console.log('Handling OPTIONS request');
         return res.sendStatus(200);
     }
     next();
-});
-
-// Добавляем обработку ошибок CORS
-app.use((err, req, res, next) => {
-    console.error('CORS error:', err);
-    if (err.name === 'CORS') {
-        res.status(403).json({ error: 'CORS error: ' + err.message });
-    } else {
-        next(err);
-    }
 });
 
 app.use(express.urlencoded({ extended: true }));
@@ -518,39 +485,49 @@ app.post('/createOrder', async (req, res) => {
     try {
         console.log('Запрос получен:', req.body);
 
-        const { title_order, user_id, services_id, order_date, additionalInfo } = req.body;
+        const { 
+            title_order, 
+            user_id, 
+            service_id, 
+            template_id,
+            site_type,
+            blocks_count,
+            addon_ids,
+            total_price,
+            additional_info
+        } = req.body;
 
-        if (!title_order || !user_id || !services_id || !order_date || isNaN(parseInt(user_id)) || isNaN(parseInt(services_id))) {
+        if (!title_order || !user_id || !service_id || !total_price) {
             console.error('Валидация не пройдена. Некоторые поля пусты или некорректного типа.');
-            return res.status(400).json({ message: 'Не все поля заполнены или некорректного типа' });
+            return res.status(400).json({ message: 'Не все обязательные поля заполнены' });
         }
-
-        console.log('Данные перед запросом в БД:', { title_order, user_id, services_id, order_date, additionalInfo });
 
         const newOrder = await db.query(
-            'INSERT INTO orders (title_order, user_id, services_id, order_date, executor_id, status_id, additional_info) VALUES (?, ?, ?, ?, 1, 1, ?)',
-            [title_order, parseInt(user_id), parseInt(services_id), order_date, additionalInfo]
+            'INSERT INTO orders (title_order, user_id, service_id, template_id, site_type, blocks_count, total_price, additional_info, status_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
+            [title_order, user_id, service_id, template_id, site_type, blocks_count, total_price, additional_info]
         );
 
-        console.log('Результат запроса к БД:', newOrder);
+        if (newOrder.insertId) {
+            // Добавляем дополнительные услуги, если они есть
+            if (addon_ids && addon_ids.length > 0) {
+                const addonValues = addon_ids.map(addon_id => [newOrder.insertId, addon_id]);
+                await db.query(
+                    'INSERT INTO order_addons (order_id, addon_id) VALUES ?',
+                    [addonValues]
+                );
+            }
 
-        if (!newOrder || newOrder.affectedRows === 0) {
-            console.error('Не удалось создать заказ');
-            return res.status(500).json({ message: 'Не удалось создать заказ' });
+            res.json({
+                success: true,
+                orderId: newOrder.insertId,
+                message: 'Заказ успешно создан'
+            });
+        } else {
+            throw new Error('Не удалось создать заказ');
         }
-
-        console.log('Заказ успешно создан с ID:', newOrder.insertId);
-        res.json({
-            id: newOrder.insertId,
-            title_order,
-            user_id,
-            services_id,
-            order_date,
-            additionalInfo
-        });
     } catch (error) {
         console.error('Ошибка при создании заказа:', error);
-        res.status(500).json({ message: 'Ошибка сервера' });
+        res.status(500).json({ message: 'Ошибка сервера при создании заказа' });
     }
 });
 
