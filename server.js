@@ -480,6 +480,26 @@ app.get('/orderstatuses', async (req, res) => {
     }
 });
 
+// Создаем таблицу order_status_history, если она не существует
+const createOrderStatusHistoryTable = `
+    CREATE TABLE IF NOT EXISTS order_status_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        status_id INT NOT NULL,
+        comment TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id),
+        FOREIGN KEY (status_id) REFERENCES order_statuses(id)
+    )
+`;
+
+db.query(createOrderStatusHistoryTable, (err) => {
+    if (err) {
+        console.error('Ошибка при создании таблицы order_status_history:', err);
+    } else {
+        console.log('Таблица order_status_history создана или уже существует');
+    }
+});
 
 app.post('/createOrder', async (req, res) => {
     try {
@@ -535,32 +555,6 @@ app.post('/createOrder', async (req, res) => {
                 message: 'Указанный шаблон не существует'
             });
         }
-
-        // Добавляем шаблон в service_templates, если его там нет
-        const insertTemplateQuery = `
-            INSERT INTO service_templates (id, name, description, site_type, price, service_id)
-            SELECT ?, ?, ?, ?, ?, ?
-            WHERE NOT EXISTS (SELECT 1 FROM service_templates WHERE id = ?)
-        `;
-        
-        await new Promise((resolve, reject) => {
-            db.query(insertTemplateQuery, [
-                template.id,
-                template.name,
-                template.description,
-                template.site_type,
-                template.price,
-                service_id,
-                template.id
-            ], (err, result) => {
-                if (err) {
-                    console.error('Ошибка при добавлении шаблона:', err);
-                    reject(err);
-                } else {
-                    resolve(result);
-                }
-            });
-        });
 
         // Создаем заказ
         const insertQuery = `
@@ -1875,45 +1869,6 @@ app.get('/service_addons', (req, res) => {
         }
         res.json({ data: results });
     });
-});
-
-// Создание таблицы service_templates, если она не существует
-const createServiceTemplatesTable = `
-    CREATE TABLE IF NOT EXISTS service_templates (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        preview_url VARCHAR(255),
-        site_type VARCHAR(50) NOT NULL,
-        price DECIMAL(10, 2) NOT NULL,
-        service_id INT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (service_id) REFERENCES services(id)
-    )
-`;
-
-db.query(createServiceTemplatesTable, (err) => {
-    if (err) {
-        console.error('Ошибка при создании таблицы service_templates:', err);
-    } else {
-        console.log('Таблица service_templates создана или уже существует');
-        
-        // Добавляем шаблон, если его нет
-        const insertTemplateQuery = `
-            INSERT INTO service_templates (id, name, description, site_type, price, service_id)
-            SELECT 21, 'Классический лендинг', 'Стандартный одностраничный сайт с основными блоками', 'landing', 15000.00, 1
-            WHERE NOT EXISTS (SELECT 1 FROM service_templates WHERE id = 21)
-        `;
-        
-        db.query(insertTemplateQuery, (err) => {
-            if (err) {
-                console.error('Ошибка при добавлении шаблона:', err);
-            } else {
-                console.log('Шаблон успешно добавлен или уже существует');
-            }
-        });
-    }
 });
 
 // Получение шаблонов сайтов
