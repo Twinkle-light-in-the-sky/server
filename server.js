@@ -2124,6 +2124,68 @@ app.delete('/orders/:orderId', authenticateToken, (req, res) => {
     );
 });
 
+// Эндпоинт для отмены заказа
+app.put('/orders/:orderId/cancel', authenticateToken, (req, res) => {
+    const orderId = req.params.orderId;
+    const userId = req.user.id;
+
+    console.log(`Попытка отмены заказа ${orderId} пользователем ${userId}`);
+
+    // Проверяем существование заказа и принадлежность пользователю
+    db.query(
+        'SELECT * FROM orders WHERE id = ? AND user_id = ?',
+        [orderId, userId],
+        (err, rows) => {
+            if (err) {
+                console.error('Ошибка при проверке заказа:', err);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Ошибка при проверке заказа',
+                    details: err.message
+                });
+            }
+
+            if (!rows || rows.length === 0) {
+                console.log(`Заказ ${orderId} не найден или не принадлежит пользователю ${userId}`);
+                return res.status(404).json({
+                    success: false,
+                    error: 'Заказ не найден или у вас нет прав на его отмену'
+                });
+            }
+
+            // Обновляем статус заказа
+            db.query(
+                'UPDATE orders SET status_id = 8 WHERE id = ?',
+                [orderId],
+                (err, result) => {
+                    if (err) {
+                        console.error('Ошибка при отмене заказа:', err);
+                        return res.status(500).json({
+                            success: false,
+                            error: 'Ошибка при отмене заказа',
+                            details: err.message
+                        });
+                    }
+
+                    if (result.affectedRows > 0) {
+                        console.log(`Заказ ${orderId} успешно отменен`);
+                        res.json({
+                            success: true,
+                            message: 'Заказ успешно отменен'
+                        });
+                    } else {
+                        console.log(`Не удалось отменить заказ ${orderId}`);
+                        res.status(404).json({
+                            success: false,
+                            error: 'Не удалось отменить заказ'
+                        });
+                    }
+                }
+            );
+        }
+    );
+});
+
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
