@@ -2067,30 +2067,45 @@ app.delete('/orders/:orderId', authenticateToken, (req, res) => {
                 });
             }
 
-            // Удаляем заказ
+            // Сначала удаляем записи из истории статусов
             db.query(
-                'DELETE FROM orders WHERE id = ?',
+                'DELETE FROM order_status_history WHERE order_id = ?',
                 [orderId],
-                (err, result) => {
+                (err) => {
                     if (err) {
-                        console.error('Ошибка при удалении заказа:', err);
+                        console.error('Ошибка при удалении истории статусов:', err);
                         return res.status(500).json({
                             success: false,
-                            error: 'Ошибка при удалении заказа'
+                            error: 'Ошибка при удалении истории заказа'
                         });
                     }
 
-                    if (result.affectedRows > 0) {
-                        res.json({
-                            success: true,
-                            message: 'Заказ успешно удален'
-                        });
-                    } else {
-                        res.status(404).json({
-                            success: false,
-                            error: 'Не удалось удалить заказ'
-                        });
-                    }
+                    // Затем удаляем сам заказ
+                    db.query(
+                        'DELETE FROM orders WHERE id = ?',
+                        [orderId],
+                        (err, result) => {
+                            if (err) {
+                                console.error('Ошибка при удалении заказа:', err);
+                                return res.status(500).json({
+                                    success: false,
+                                    error: 'Ошибка при удалении заказа'
+                                });
+                            }
+
+                            if (result.affectedRows > 0) {
+                                res.json({
+                                    success: true,
+                                    message: 'Заказ успешно удален'
+                                });
+                            } else {
+                                res.status(404).json({
+                                    success: false,
+                                    error: 'Не удалось удалить заказ'
+                                });
+                            }
+                        }
+                    );
                 }
             );
         }
