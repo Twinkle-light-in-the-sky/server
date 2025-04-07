@@ -2049,10 +2049,9 @@ app.delete('/orders/:orderId', authenticateToken, async (req, res) => {
 
     try {
         // Проверяем существование заказа и принадлежность пользователю
-        const orderQuery = 'SELECT * FROM orders WHERE id = ? AND user_id = ?';
-        const [order] = await db.query(orderQuery, [orderId, userId]);
-
-        if (!order) {
+        const [rows] = await db.query('SELECT * FROM orders WHERE id = ? AND user_id = ?', [orderId, userId]);
+        
+        if (!rows || rows.length === 0) {
             return res.status(404).json({
                 success: false,
                 error: 'Заказ не найден или у вас нет прав на его удаление'
@@ -2060,8 +2059,7 @@ app.delete('/orders/:orderId', authenticateToken, async (req, res) => {
         }
 
         // Удаляем заказ
-        const deleteQuery = 'DELETE FROM orders WHERE id = ?';
-        await db.query(deleteQuery, [orderId]);
+        await db.query('DELETE FROM orders WHERE id = ?', [orderId]);
 
         res.json({
             success: true,
