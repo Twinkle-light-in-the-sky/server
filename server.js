@@ -2047,6 +2047,8 @@ app.delete('/orders/:orderId', authenticateToken, (req, res) => {
     const orderId = req.params.orderId;
     const userId = req.user.id;
 
+    console.log(`Попытка удаления заказа ${orderId} пользователем ${userId}`);
+
     // Проверяем существование заказа и принадлежность пользователю
     db.query(
         'SELECT * FROM orders WHERE id = ? AND user_id = ?',
@@ -2056,29 +2058,36 @@ app.delete('/orders/:orderId', authenticateToken, (req, res) => {
                 console.error('Ошибка при проверке заказа:', err);
                 return res.status(500).json({
                     success: false,
-                    error: 'Ошибка при проверке заказа'
+                    error: 'Ошибка при проверке заказа',
+                    details: err.message
                 });
             }
 
             if (!rows || rows.length === 0) {
+                console.log(`Заказ ${orderId} не найден или не принадлежит пользователю ${userId}`);
                 return res.status(404).json({
                     success: false,
                     error: 'Заказ не найден или у вас нет прав на его удаление'
                 });
             }
 
+            console.log(`Начинаем удаление заказа ${orderId}`);
+
             // Сначала удаляем записи из истории статусов
             db.query(
                 'DELETE FROM order_status_history WHERE order_id = ?',
                 [orderId],
-                (err) => {
+                (err, result) => {
                     if (err) {
                         console.error('Ошибка при удалении истории статусов:', err);
                         return res.status(500).json({
                             success: false,
-                            error: 'Ошибка при удалении истории заказа'
+                            error: 'Ошибка при удалении истории заказа',
+                            details: err.message
                         });
                     }
+
+                    console.log(`Удалено записей из истории статусов: ${result.affectedRows}`);
 
                     // Затем удаляем сам заказ
                     db.query(
@@ -2089,16 +2098,19 @@ app.delete('/orders/:orderId', authenticateToken, (req, res) => {
                                 console.error('Ошибка при удалении заказа:', err);
                                 return res.status(500).json({
                                     success: false,
-                                    error: 'Ошибка при удалении заказа'
+                                    error: 'Ошибка при удалении заказа',
+                                    details: err.message
                                 });
                             }
 
                             if (result.affectedRows > 0) {
+                                console.log(`Заказ ${orderId} успешно удален`);
                                 res.json({
                                     success: true,
                                     message: 'Заказ успешно удален'
                                 });
                             } else {
+                                console.log(`Не удалось удалить заказ ${orderId}`);
                                 res.status(404).json({
                                     success: false,
                                     error: 'Не удалось удалить заказ'
