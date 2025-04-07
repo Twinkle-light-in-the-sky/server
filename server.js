@@ -2085,6 +2085,13 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
     try {
         const { order_id } = req.body;
         
+        if (!order_id) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'ID заказа не указан' 
+            });
+        }
+        
         // Проверяем существование заказа
         const orderCheck = await new Promise((resolve, reject) => {
             db.query('SELECT * FROM orders WHERE id = ?', [order_id], (err, results) => {
