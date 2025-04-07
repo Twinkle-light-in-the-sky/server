@@ -505,27 +505,6 @@ app.get('/orderstatuses', async (req, res) => {
     }
 });
 
-// Создаем таблицу order_status_history, если она не существует
-const createOrderStatusHistoryTable = `
-    CREATE TABLE IF NOT EXISTS order_status_history (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        order_id INT NOT NULL,
-        status_id INT NOT NULL,
-        comment TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (order_id) REFERENCES orders(id),
-        FOREIGN KEY (status_id) REFERENCES order_statuses(id)
-    )
-`;
-
-db.query(createOrderStatusHistoryTable, (err) => {
-    if (err) {
-        console.error('Ошибка при создании таблицы order_status_history:', err);
-    } else {
-        console.log('Таблица order_status_history создана или уже существует');
-    }
-});
-
 app.post('/createOrder', authenticateToken, upload.array('files', 5), async (req, res) => {
     try {
         console.log('Получен запрос на создание заказа:', req.body);
