@@ -2086,12 +2086,18 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
         const { order_id } = req.body;
         
         // Проверяем существование заказа
-        const orderCheck = await pool.query(
-            'SELECT * FROM orders WHERE order_id = $1',
-            [order_id]
-        );
+        const orderCheck = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM orders WHERE id = ?', [order_id], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при проверке заказа:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
         
-        if (orderCheck.rows.length === 0) {
+        if (orderCheck.length === 0) {
             return res.status(404).json({ 
                 success: false, 
                 message: 'Заказ не найден' 
@@ -2099,21 +2105,41 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
         }
 
         // Обновляем статус заказа на "Отменен" (status_id = 8)
-        const updateOrder = await pool.query(
-            'UPDATE orders SET status_id = 8 WHERE order_id = $1 RETURNING *',
-            [order_id]
-        );
+        const updateOrder = await new Promise((resolve, reject) => {
+            db.query(
+                'UPDATE orders SET status_id = 8 WHERE id = ?',
+                [order_id],
+                (err, result) => {
+                    if (err) {
+                        console.error('Ошибка при обновлении статуса:', err);
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                }
+            );
+        });
 
         // Добавляем запись в историю статусов
-        await pool.query(
-            'INSERT INTO order_status_history (order_id, status_id, change_date) VALUES ($1, $2, CURRENT_TIMESTAMP)',
-            [order_id, 8]
-        );
+        await new Promise((resolve, reject) => {
+            db.query(
+                'INSERT INTO order_status_history (order_id, status_id, change_date) VALUES (?, 8, CURRENT_TIMESTAMP)',
+                [order_id],
+                (err, result) => {
+                    if (err) {
+                        console.error('Ошибка при добавлении в историю:', err);
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                }
+            );
+        });
 
         res.json({ 
             success: true, 
             message: 'Заказ успешно отменен',
-            order: updateOrder.rows[0]
+            order: orderCheck[0]
         });
     } catch (error) {
         console.error('Ошибка при отмене заказа:', error);
