@@ -2042,6 +2042,40 @@ app.post('/orders', (req, res) => {
     });
 });
 
+// Эндпоинт для удаления заказа
+app.delete('/orders/:orderId', authenticateToken, async (req, res) => {
+    const orderId = req.params.orderId;
+    const userId = req.user.id;
+
+    try {
+        // Проверяем существование заказа и принадлежность пользователю
+        const orderQuery = 'SELECT * FROM orders WHERE id = ? AND user_id = ?';
+        const [order] = await db.query(orderQuery, [orderId, userId]);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                error: 'Заказ не найден или у вас нет прав на его удаление'
+            });
+        }
+
+        // Удаляем заказ
+        const deleteQuery = 'DELETE FROM orders WHERE id = ?';
+        await db.query(deleteQuery, [orderId]);
+
+        res.json({
+            success: true,
+            message: 'Заказ успешно удален'
+        });
+    } catch (error) {
+        console.error('Ошибка при удалении заказа:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка при удалении заказа'
+        });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
