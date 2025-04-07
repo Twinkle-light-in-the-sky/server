@@ -117,7 +117,10 @@ const authenticateToken = (req, res, next) => {
     console.log('Проверка токена:', {
         hasAuthHeader: !!authHeader,
         token: token ? 'Present' : 'Missing',
-        headers: req.headers
+        headers: req.headers,
+        method: req.method,
+        path: req.path,
+        url: req.url
     });
 
     if (!token) {
@@ -2073,7 +2076,11 @@ app.delete('/orders/:id', authenticateToken, async (req, res) => {
         console.log('Получен запрос на удаление заказа:', {
             orderId,
             userId,
-            userRole
+            userRole,
+            method: req.method,
+            path: req.path,
+            url: req.url,
+            headers: req.headers
         });
 
         // Проверяем существование заказа
@@ -2083,6 +2090,7 @@ app.delete('/orders/:id', authenticateToken, async (req, res) => {
                     console.error('Ошибка при проверке заказа:', err);
                     reject(err);
                 } else {
+                    console.log('Результат проверки заказа:', results);
                     resolve(results);
                 }
             });
@@ -2185,4 +2193,12 @@ app.delete('/orders/:id', authenticateToken, async (req, res) => {
             error: error.message
         });
     }
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+    console.log('Успешно подключено к базе данных MySQL.');
+    console.log('Таблица order_status_history создана или уже существует');
 });
