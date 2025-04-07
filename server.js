@@ -523,7 +523,7 @@ db.query(createOrderStatusHistoryTable, (err) => {
     }
 });
 
-app.post('/createOrder', async (req, res) => {
+app.post('/createOrder', authenticateToken, upload.array('files', 5), async (req, res) => {
     try {
         console.log('Получен запрос на создание заказа:', req.body);
 
@@ -2228,3 +2228,6 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
         });
     }
 });
+
+console.log('Успешно подключено к базе данных MySQL.');
+console.log('Таблица order_status_history создана или уже существует');
