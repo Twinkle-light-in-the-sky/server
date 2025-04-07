@@ -2042,5 +2042,8 @@ app.post('/orders', (req, res) => {
     });
 });
 
+const PORT = process.env.PORT || 3001;
 
-console.log('Успешно подключено к базе данных MySQL.');
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+});
