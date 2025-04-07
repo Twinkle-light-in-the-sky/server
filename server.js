@@ -2049,7 +2049,7 @@ app.delete('/orders/:orderId', authenticateToken, async (req, res) => {
 
     try {
         // Проверяем существование заказа и принадлежность пользователю
-        const [rows] = await db.execute('SELECT * FROM orders WHERE id = ? AND user_id = ?', [orderId, userId]);
+        const [rows] = await db.query('SELECT * FROM orders WHERE id = ? AND user_id = ?', [orderId, userId]);
         
         if (!rows || rows.length === 0) {
             return res.status(404).json({
@@ -2059,7 +2059,14 @@ app.delete('/orders/:orderId', authenticateToken, async (req, res) => {
         }
 
         // Удаляем заказ
-        await db.execute('DELETE FROM orders WHERE id = ?', [orderId]);
+        const [result] = await db.query('DELETE FROM orders WHERE id = ?', [orderId]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Заказ не найден'
+            });
+        }
 
         res.json({
             success: true,
