@@ -1963,69 +1963,8 @@ app.get('/service_pricing', (req, res) => {
     });
 });
 
-// Проверяем существование внешнего ключа перед удалением
-const checkForeignKeyQuery = `
-    SELECT CONSTRAINT_NAME 
-    FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE CONSTRAINT_SCHEMA = DATABASE() 
-    AND TABLE_NAME = 'orders' 
-    AND CONSTRAINT_NAME = 'orders_ibfk_2'
-`;
 
-db.query(checkForeignKeyQuery, (err, results) => {
-    if (err) {
-        console.error('Ошибка при проверке внешнего ключа:', err);
-    } else if (results.length > 0) {
-        // Если ключ существует, удаляем его
-        const dropForeignKeyQuery = `
-            ALTER TABLE orders 
-            DROP FOREIGN KEY orders_ibfk_2
-        `;
-        
-        db.query(dropForeignKeyQuery, (err) => {
-            if (err) {
-                console.error('Ошибка при удалении внешнего ключа:', err);
-            } else {
-                console.log('Внешний ключ успешно удален');
-            }
-        });
-    } else {
-        console.log('Внешний ключ orders_ibfk_2 не существует, пропускаем удаление');
-    }
-});
 
-// Проверяем существование нового внешнего ключа
-const checkNewForeignKeyQuery = `
-    SELECT CONSTRAINT_NAME 
-    FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE CONSTRAINT_SCHEMA = DATABASE() 
-    AND TABLE_NAME = 'orders' 
-    AND CONSTRAINT_NAME = 'orders_template_id_fk'
-`;
-
-db.query(checkNewForeignKeyQuery, (err, results) => {
-    if (err) {
-        console.error('Ошибка при проверке нового внешнего ключа:', err);
-    } else if (results.length === 0) {
-        // Если ключ не существует, создаем его
-        const addForeignKeyQuery = `
-            ALTER TABLE orders 
-            ADD CONSTRAINT orders_template_id_fk 
-            FOREIGN KEY (template_id) 
-            REFERENCES templates(id)
-        `;
-        
-        db.query(addForeignKeyQuery, (err) => {
-            if (err) {
-                console.error('Ошибка при создании нового внешнего ключа:', err);
-            } else {
-                console.log('Новый внешний ключ успешно создан');
-            }
-        });
-    } else {
-        console.log('Внешний ключ orders_template_id_fk уже существует, пропускаем создание');
-    }
-});
 
 // Создание заказа с дополнительными услугами
 app.post('/orders', (req, res) => {
