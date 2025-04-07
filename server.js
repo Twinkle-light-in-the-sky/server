@@ -1956,17 +1956,50 @@ app.get('/service_pricing', (req, res) => {
     });
 });
 
-// Удаляем существующую связь с service_templates
-const dropForeignKeyQuery = `
-    ALTER TABLE orders 
-    DROP FOREIGN KEY orders_ibfk_2
+// Проверяем существование внешнего ключа перед удалением
+const checkForeignKeyQuery = `
+    SELECT CONSTRAINT_NAME 
+    FROM information_schema.TABLE_CONSTRAINTS 
+    WHERE CONSTRAINT_SCHEMA = DATABASE() 
+    AND TABLE_NAME = 'orders' 
+    AND CONSTRAINT_NAME = 'orders_ibfk_2'
 `;
 
-db.query(dropForeignKeyQuery, (err) => {
+db.query(checkForeignKeyQuery, (err, results) => {
     if (err) {
-        console.error('Ошибка при удалении внешнего ключа:', err);
+        console.error('Ошибка при проверке внешнего ключа:', err);
+    } else if (results.length > 0) {
+        // Если ключ существует, удаляем его
+        const dropForeignKeyQuery = `
+            ALTER TABLE orders 
+            DROP FOREIGN KEY orders_ibfk_2
+        `;
+        
+        db.query(dropForeignKeyQuery, (err) => {
+            if (err) {
+                console.error('Ошибка при удалении внешнего ключа:', err);
+            } else {
+                console.log('Внешний ключ успешно удален');
+                
+                // Создаем новую связь с таблицей templates
+                const addForeignKeyQuery = `
+                    ALTER TABLE orders 
+                    ADD CONSTRAINT orders_template_id_fk 
+                    FOREIGN KEY (template_id) 
+                    REFERENCES templates(id)
+                `;
+                
+                db.query(addForeignKeyQuery, (err) => {
+                    if (err) {
+                        console.error('Ошибка при создании нового внешнего ключа:', err);
+                    } else {
+                        console.log('Новый внешний ключ успешно создан');
+                    }
+                });
+            }
+        });
     } else {
-        console.log('Внешний ключ успешно удален');
+        console.log('Внешний ключ orders_ibfk_2 не существует, пропускаем удаление');
         
         // Создаем новую связь с таблицей templates
         const addForeignKeyQuery = `
