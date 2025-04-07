@@ -111,22 +111,29 @@ app.use('/uploads/projects-bg', express.static(projectsBgPath));
 
 // Middleware для проверки JWT токена
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) {
-    console.log('Токен отсутствует в заголовке');
-    return res.status(401).json({ message: 'Токен не найден' });
-  }
+    console.log('Проверка токена:', {
+        hasAuthHeader: !!authHeader,
+        token: token ? 'Present' : 'Missing',
+        headers: req.headers
+    });
 
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-    if (err) {
-      console.log('Ошибка верификации токена:', err);
-      return res.status(403).json({ message: 'Недействительный токен' });
+    if (!token) {
+        console.log('Токен отсутствует в заголовке');
+        return res.status(401).json({ message: 'Токен не найден' });
     }
-    req.user = user;
-    next();
-  });
+
+    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+        if (err) {
+            console.log('Ошибка верификации токена:', err);
+            return res.status(403).json({ message: 'Недействительный токен' });
+        }
+        console.log('Токен верифицирован, пользователь:', user);
+        req.user = user;
+        next();
+    });
 };
 
 app.post('/regpage', async (req, res) => {
@@ -2117,9 +2124,25 @@ app.post('/orders', (req, res) => {
 // Эндпоинт для отмены заказа
 app.post('/cancelOrder', authenticateToken, async (req, res) => {
     try {
+        // Добавляем CORS-заголовки
+        const origin = req.headers.origin;
+        if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', 'true');
+        }
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+
+        // Обрабатываем OPTIONS-запрос
+        if (req.method === 'OPTIONS') {
+            return res.sendStatus(200);
+        }
+
+        console.log('Получен запрос на отмену заказа:', req.body);
         const { order_id } = req.body;
         
         if (!order_id) {
+            console.log('ID заказа не указан');
             return res.status(400).json({ 
                 success: false, 
                 message: 'ID заказа не указан' 
@@ -2139,9 +2162,22 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
         });
         
         if (orderCheck.length === 0) {
+            console.log('Заказ не найден:', order_id);
             return res.status(404).json({ 
                 success: false, 
                 message: 'Заказ не найден' 
+            });
+        }
+
+        // Проверяем, принадлежит ли заказ пользователю
+        if (orderCheck[0].user_id !== req.user.id && req.user.role !== 'admin') {
+            console.log('Попытка отменить чужой заказ:', {
+                orderUserId: orderCheck[0].user_id,
+                currentUserId: req.user.id
+            });
+            return res.status(403).json({ 
+                success: false, 
+                message: 'У вас нет прав на отмену этого заказа' 
             });
         }
 
@@ -2177,6 +2213,7 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
             );
         });
 
+        console.log('Заказ успешно отменен:', order_id);
         res.json({ 
             success: true, 
             message: 'Заказ успешно отменен',
@@ -2186,8 +2223,8 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
         console.error('Ошибка при отмене заказа:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'Ошибка при отмене заказа',
-            error: error.message 
+            message: 'Ошибка сервера при отмене заказа',
+            error: error.message
         });
     }
 });
