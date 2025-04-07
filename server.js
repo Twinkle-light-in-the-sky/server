@@ -2060,37 +2060,25 @@ app.post('/orders', (req, res) => {
     });
 });
 
-// Эндпоинт для отмены заказа
-app.post('/cancelOrder', authenticateToken, async (req, res) => {
+
+console.log('Успешно подключено к базе данных MySQL.');
+console.log('Таблица order_status_history создана или уже существует');
+
+app.delete('/orders/:id', authenticateToken, async (req, res) => {
     try {
-        // Добавляем CORS-заголовки
-        const origin = req.headers.origin;
-        if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-            res.header('Access-Control-Allow-Origin', origin);
-            res.header('Access-Control-Allow-Credentials', 'true');
-        }
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+        const orderId = req.params.id;
+        const userId = req.user.id;
+        const userRole = req.user.role;
 
-        // Обрабатываем OPTIONS-запрос
-        if (req.method === 'OPTIONS') {
-            return res.sendStatus(200);
-        }
+        console.log('Получен запрос на удаление заказа:', {
+            orderId,
+            userId,
+            userRole
+        });
 
-        console.log('Получен запрос на отмену заказа:', req.body);
-        const { order_id } = req.body;
-        
-        if (!order_id) {
-            console.log('ID заказа не указан');
-            return res.status(400).json({ 
-                success: false, 
-                message: 'ID заказа не указан' 
-            });
-        }
-        
         // Проверяем существование заказа
-        const orderCheck = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM orders WHERE id = ?', [order_id], (err, results) => {
+        const [order] = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM orders WHERE id = ?', [orderId], (err, results) => {
                 if (err) {
                     console.error('Ошибка при проверке заказа:', err);
                     reject(err);
@@ -2099,74 +2087,102 @@ app.post('/cancelOrder', authenticateToken, async (req, res) => {
                 }
             });
         });
-        
-        if (orderCheck.length === 0) {
-            console.log('Заказ не найден:', order_id);
+
+        if (!order) {
+            console.log('Заказ не найден:', orderId);
             return res.status(404).json({ 
-                success: false, 
+                success: false,
                 message: 'Заказ не найден' 
             });
         }
 
-        // Проверяем, принадлежит ли заказ пользователю
-        if (orderCheck[0].user_id !== req.user.id && req.user.role !== 'admin') {
-            console.log('Попытка отменить чужой заказ:', {
-                orderUserId: orderCheck[0].user_id,
-                currentUserId: req.user.id
+        // Проверяем права доступа
+        if (userRole !== 'admin' && order.user_id !== userId) {
+            console.log('Попытка удалить чужой заказ:', {
+                orderUserId: order.user_id,
+                currentUserId: userId
             });
             return res.status(403).json({ 
-                success: false, 
-                message: 'У вас нет прав на отмену этого заказа' 
+                success: false,
+                message: 'У вас нет прав на удаление этого заказа' 
             });
         }
 
-        // Обновляем статус заказа на "Отменен" (status_id = 8)
-        const updateOrder = await new Promise((resolve, reject) => {
-            db.query(
-                'UPDATE orders SET status_id = 8 WHERE id = ?',
-                [order_id],
-                (err, result) => {
-                    if (err) {
-                        console.error('Ошибка при обновлении статуса:', err);
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                }
-            );
-        });
-
-        // Добавляем запись в историю статусов
+        // Начинаем транзакцию
         await new Promise((resolve, reject) => {
-            db.query(
-                'INSERT INTO order_status_history (order_id, status_id, change_date) VALUES (?, 8, CURRENT_TIMESTAMP)',
-                [order_id],
-                (err, result) => {
-                    if (err) {
-                        console.error('Ошибка при добавлении в историю:', err);
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
+            db.query('START TRANSACTION', (err) => {
+                if (err) {
+                    console.error('Ошибка при начале транзакции:', err);
+                    reject(err);
+                } else {
+                    resolve();
                 }
-            );
+            });
         });
 
-        console.log('Заказ успешно отменен:', order_id);
-        res.json({ 
-            success: true, 
-            message: 'Заказ успешно отменен',
-            order: orderCheck[0]
-        });
+        try {
+            // Удаляем связанные записи из order_status_history
+            await new Promise((resolve, reject) => {
+                db.query('DELETE FROM order_status_history WHERE order_id = ?', [orderId], (err) => {
+                    if (err) {
+                        console.error('Ошибка при удалении истории статусов:', err);
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+
+            // Удаляем заказ
+            await new Promise((resolve, reject) => {
+                db.query('DELETE FROM orders WHERE id = ?', [orderId], (err) => {
+                    if (err) {
+                        console.error('Ошибка при удалении заказа:', err);
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+
+            // Подтверждаем транзакцию
+            await new Promise((resolve, reject) => {
+                db.query('COMMIT', (err) => {
+                    if (err) {
+                        console.error('Ошибка при подтверждении транзакции:', err);
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+
+            console.log('Заказ успешно удален:', orderId);
+            res.json({ 
+                success: true,
+                message: 'Заказ успешно удален'
+            });
+
+        } catch (error) {
+            // Откатываем транзакцию в случае ошибки
+            await new Promise((resolve) => {
+                db.query('ROLLBACK', (err) => {
+                    if (err) {
+                        console.error('Ошибка при откате транзакции:', err);
+                    }
+                    resolve();
+                });
+            });
+
+            throw error;
+        }
+
     } catch (error) {
-        console.error('Ошибка при отмене заказа:', error);
+        console.error('Ошибка при удалении заказа:', error);
         res.status(500).json({ 
-            success: false, 
-            message: 'Ошибка сервера при отмене заказа',
+            success: false,
+            message: 'Ошибка сервера при удалении заказа',
             error: error.message
         });
     }
 });
-
-console.log('Успешно подключено к базе данных MySQL.');
-console.log('Таблица order_status_history создана или уже существует');
