@@ -2194,11 +2194,3 @@ app.delete('/orders/:id', authenticateToken, async (req, res) => {
         });
     }
 });
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
-    console.log('Успешно подключено к базе данных MySQL.');
-    console.log('Таблица order_status_history создана или уже существует');
-});
