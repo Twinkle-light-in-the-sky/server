@@ -2043,42 +2043,46 @@ app.post('/orders', (req, res) => {
 });
 
 // Эндпоинт для удаления заказа
-app.delete('/orders/:orderId', authenticateToken, async (req, res) => {
+app.delete('/orders/:orderId', authenticateToken, (req, res) => {
     const orderId = req.params.orderId;
     const userId = req.user.id;
 
-    try {
-        // Проверяем существование заказа и принадлежность пользователю
-        const [rows] = await db.query('SELECT * FROM orders WHERE id = ? AND user_id = ?', [orderId, userId]);
-        
-        if (!rows || rows.length === 0) {
+    // Сначала проверяем существование заказа
+    db.query(
+        'SELECT * FROM orders WHERE id = ? AND user_id = ?',
+        [orderId, userId]
+    )
+    .then(([results]) => {
+        if (!results || results.length === 0) {
             return res.status(404).json({
                 success: false,
                 error: 'Заказ не найден или у вас нет прав на его удаление'
             });
         }
 
-        // Удаляем заказ
-        const [result] = await db.query('DELETE FROM orders WHERE id = ?', [orderId]);
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'Заказ не найден'
+        // Если заказ найден, удаляем его
+        return db.query('DELETE FROM orders WHERE id = ?', [orderId])
+            .then(([result]) => {
+                if (result.affectedRows > 0) {
+                    res.json({
+                        success: true,
+                        message: 'Заказ успешно удален'
+                    });
+                } else {
+                    res.status(404).json({
+                        success: false,
+                        error: 'Не удалось удалить заказ'
+                    });
+                }
             });
-        }
-
-        res.json({
-            success: true,
-            message: 'Заказ успешно удален'
-        });
-    } catch (error) {
+    })
+    .catch(error => {
         console.error('Ошибка при удалении заказа:', error);
         res.status(500).json({
             success: false,
             error: 'Ошибка при удалении заказа'
         });
-    }
+    });
 });
 
 const PORT = process.env.PORT || 3001;
@@ -2086,3 +2090,4 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
+
