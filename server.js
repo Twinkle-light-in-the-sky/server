@@ -111,8 +111,8 @@ app.use('/uploads/projects-bg', express.static(projectsBgPath));
 
 // Middleware для проверки JWT токена
 const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
 
     console.log('Проверка токена:', {
         hasAuthHeader: !!authHeader,
@@ -123,20 +123,20 @@ const authenticateToken = (req, res, next) => {
         url: req.url
     });
 
-    if (!token) {
-        console.log('Токен отсутствует в заголовке');
-        return res.status(401).json({ message: 'Токен не найден' });
-    }
+  if (!token) {
+    console.log('Токен отсутствует в заголовке');
+    return res.status(401).json({ message: 'Токен не найден' });
+  }
 
-    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-        if (err) {
-            console.log('Ошибка верификации токена:', err);
-            return res.status(403).json({ message: 'Недействительный токен' });
-        }
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    if (err) {
+      console.log('Ошибка верификации токена:', err);
+      return res.status(403).json({ message: 'Недействительный токен' });
+    }
         console.log('Токен верифицирован, пользователь:', user);
-        req.user = user;
-        next();
-    });
+    req.user = user;
+    next();
+  });
 };
 
 app.post('/regpage', async (req, res) => {
@@ -377,7 +377,7 @@ app.get('/projects', async (req, res) => {
         console.log('Получен запрос на получение проектов');
         
         const projects = await new Promise((resolve, reject) => {
-            db.query('SELECT id, projects_title, projects_description, projects_background, is_dark_theme FROM projects ORDER BY id ASC', (err, results) => {
+            db.query('SELECT id, projects_title, projects_description, projects_background, is_dark_theme, link FROM projects ORDER BY id ASC', (err, results) => {
             if (err) {
                     console.error('Ошибка при получении проектов:', err);
                     reject(err);
@@ -1330,8 +1330,8 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
             } : 'No file'
         });
 
-        const { projects_title, projects_description, is_dark_theme } = req.body;
-        console.log('Полученные данные:', { projects_title, projects_description, is_dark_theme });
+        const { projects_title, projects_description, is_dark_theme, link } = req.body;
+        console.log('Полученные данные:', { projects_title, projects_description, is_dark_theme, link });
 
         let imageUrl = null;
 
@@ -1408,16 +1408,17 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
             projects_description, 
             imageUrl, 
             is_dark_theme,
-            is_dark_theme_value: is_dark_theme === 'true' ? 1 : 0
+            link
         });
 
-        const insertQuery = 'INSERT INTO projects (projects_title, projects_description, projects_background, is_dark_theme) VALUES (?, ?, ?, ?)';
+        const insertQuery = 'INSERT INTO projects (projects_title, projects_description, projects_background, is_dark_theme, link) VALUES (?, ?, ?, ?, ?)';
         
         db.query(insertQuery, [
             projects_title, 
             projects_description, 
             imageUrl, 
-            is_dark_theme === 'true' ? 1 : 0
+            is_dark_theme === 'true' ? 1 : 0,
+            link || null
         ], (err, result) => {
             if (err) {
                 console.error("Ошибка при создании проекта в БД:", err);
@@ -1453,8 +1454,8 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
 app.put('/projects/:id', upload.single('projects_background'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { projects_title, projects_description, is_dark_theme } = req.body;
-        console.log('Обновление проекта:', { id, projects_title, projects_description, is_dark_theme });
+        const { projects_title, projects_description, is_dark_theme, link } = req.body;
+        console.log('Обновление проекта:', { id, projects_title, projects_description, is_dark_theme, link });
 
         let imageUrl = null;
 
@@ -1530,6 +1531,11 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
         if (is_dark_theme !== undefined) {
             updateFields.push('is_dark_theme = ?');
             updateValues.push(is_dark_theme === 'true' ? 1 : 0);
+        }
+
+        if (link !== undefined) {
+            updateFields.push('link = ?');
+            updateValues.push(link);
         }
 
         // Если нет полей для обновления, возвращаем ошибку
