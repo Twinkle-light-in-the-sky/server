@@ -1467,59 +1467,75 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
 app.put('/projects/:id', upload.single('projects_background'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { projects_title, projects_description, is_dark_theme, link } = req.body;
-        console.log('Обновление проекта:', { id, projects_title, projects_description, is_dark_theme, link });
+        const { projects_title, projects_description, is_dark_theme, link, block_size } = req.body;
+        console.log('Обновление проекта:', { id, projects_title, projects_description, is_dark_theme, link, block_size });
 
         let imageUrl = null;
 
         // Если загружено новое изображение
         if (req.file) {
-            // Конвертируем буфер в base64
-            const base64Image = req.file.buffer.toString('base64');
+            try {
+                console.log('Начинаем обработку изображения');
+                // Конвертируем буфер в base64
+                const base64Image = req.file.buffer.toString('base64');
+                console.log('Изображение конвертировано в base64, размер:', base64Image.length);
 
-            // Загружаем изображение на ImgBB
-            const postData = new URLSearchParams();
-            postData.append('image', base64Image);
-            postData.append('key', process.env.IMGBB_API_KEY);
+                // Загружаем изображение на ImgBB
+                const postData = new URLSearchParams();
+                postData.append('image', base64Image);
+                postData.append('key', process.env.IMGBB_API_KEY);
 
-            const options = {
-                hostname: 'api.imgbb.com',
-                path: '/1/upload',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Content-Length': postData.toString().length
+                console.log('Отправляем запрос к ImgBB API');
+                const options = {
+                    hostname: 'api.imgbb.com',
+                    path: '/1/upload',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Content-Length': postData.toString().length
+                    }
+                };
+
+                const imgbbResponse = await new Promise((resolve, reject) => {
+                    const req = https.request(options, (res) => {
+                        let data = '';
+                        res.on('data', (chunk) => {
+                            data += chunk;
+                        });
+                        res.on('end', () => {
+                            try {
+                                const parsedData = JSON.parse(data);
+                                console.log('Получен ответ от ImgBB:', parsedData);
+                                resolve(parsedData);
+                            } catch (e) {
+                                console.error('Ошибка парсинга ответа ImgBB:', e);
+                                reject(e);
+                            }
+                        });
+                    });
+
+                    req.on('error', (error) => {
+                        console.error('Ошибка запроса к ImgBB:', error);
+                        reject(error);
+                    });
+
+                    req.write(postData.toString());
+                    req.end();
+                });
+
+                if (!imgbbResponse.success) {
+                    throw new Error('Ошибка при загрузке изображения на ImgBB');
                 }
-            };
 
-            const imgbbResponse = await new Promise((resolve, reject) => {
-                const req = https.request(options, (res) => {
-                    let data = '';
-                    res.on('data', (chunk) => {
-                        data += chunk;
-                    });
-                    res.on('end', () => {
-                        try {
-                            resolve(JSON.parse(data));
-                        } catch (e) {
-                            reject(e);
-                        }
-                    });
+                imageUrl = imgbbResponse.data.url;
+                console.log('Изображение успешно загружено:', imageUrl);
+            } catch (error) {
+                console.error('Ошибка при обработке изображения:', error);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
                 });
-
-                req.on('error', (error) => {
-                    reject(error);
-                });
-
-                req.write(postData.toString());
-                req.end();
-            });
-
-            if (!imgbbResponse.success) {
-                throw new Error('Ошибка при загрузке изображения на ImgBB');
             }
-
-            imageUrl = imgbbResponse.data.url;
         }
 
         // Формируем SQL запрос
@@ -1551,6 +1567,11 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
             updateValues.push(link);
         }
 
+        if (block_size !== undefined) {
+            updateFields.push('block_size = ?');
+            updateValues.push(block_size);
+        }
+
         // Если нет полей для обновления, возвращаем ошибку
         if (updateFields.length === 0) {
             return res.status(400).json({ error: 'Нет данных для обновления' });
@@ -1579,7 +1600,8 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
                     projects_title, 
                     projects_description, 
                     projects_background: imageUrl,
-                    is_dark_theme: is_dark_theme === 'true'
+                    is_dark_theme: is_dark_theme === 'true',
+                    block_size
                 }
             });
         });
