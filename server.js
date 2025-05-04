@@ -654,11 +654,13 @@ app.get('/orders', async (req, res) => {
             SELECT o.*, 
                    s.title as service_name,
                    e.fullname as executor_name,
-                   os.status_name
+                   os.status_name,
+                   u.username as customer_name
             FROM orders o
             LEFT JOIN services s ON o.service_id = s.id
             LEFT JOIN executors e ON o.executor_id = e.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
+            LEFT JOIN user u ON o.user_id = u.id
             WHERE o.user_id = ?
         `;
         
@@ -2192,6 +2194,46 @@ app.put('/orders/:orderId/cancel', authenticateToken, (req, res) => {
             );
         }
     );
+});
+
+app.put('/orders/:orderId/status', authenticateToken, async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        const { status_id } = req.body;
+
+        if (!status_id) {
+            return res.status(400).json({ success: false, message: 'Не передан статус' });
+        }
+
+        // Обновляем статус заказа
+        await new Promise((resolve, reject) => {
+            db.query(
+                'UPDATE orders SET status_id = ? WHERE id = ?',
+                [status_id, orderId],
+                (err, result) => {
+                    if (err) return reject(err);
+                    resolve(result);
+                }
+            );
+        });
+
+        // Добавляем запись в историю статусов
+        await new Promise((resolve, reject) => {
+            db.query(
+                'INSERT INTO order_status_history (order_id, status_id, comment) VALUES (?, ?, ?)',
+                [orderId, status_id, 'Статус изменён администратором'],
+                (err) => {
+                    if (err) return reject(err);
+                    resolve();
+                }
+            );
+        });
+
+        res.json({ success: true, message: 'Статус заказа обновлён' });
+    } catch (error) {
+        console.error('Ошибка при обновлении статуса заказа:', error);
+        res.status(500).json({ success: false, message: 'Ошибка сервера' });
+    }
 });
 
 const PORT = process.env.PORT || 3001;
