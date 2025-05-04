@@ -1437,7 +1437,7 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
             projects_description, 
             imageUrl, 
             is_dark_theme === 'true' ? 1 : 0,
-            link || null
+            link || ''  // Передаем пустую строку вместо null
         ], (err, result) => {
             if (err) {
                 console.error("Ошибка при создании проекта в БД:", err);
