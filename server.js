@@ -48,7 +48,7 @@ const corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: true,
-    maxAge: 86400 // 24 часа
+    maxAge: 86400
 };
 
 const app = express();
@@ -623,7 +623,9 @@ app.post('/createOrder', authenticateToken, upload.array('files', 5), async (req
         console.error('Ошибка при обработке запроса:', error);
         res.status(500).json({ 
             success: false,
-            message: 'Внутренняя ошибка сервера'
+            message: 'Внутренняя ошибка сервера',
+            error: error.message, // Показываем текст ошибки
+            stack: error.stack    // (по желанию) Показываем стек вызова
         });
     }
 });
