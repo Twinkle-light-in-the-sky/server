@@ -2073,13 +2073,19 @@ app.post('/orders', (req, res) => {
 app.delete('/orders/:orderId', authenticateToken, (req, res) => {
     const orderId = req.params.orderId;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
-    console.log(`Попытка удаления заказа ${orderId} пользователем ${userId}`);
+    // Если админ — ищем только по id, если обычный — по id и user_id
+    const query = userRole === 'admin'
+        ? 'SELECT * FROM orders WHERE id = ?'
+        : 'SELECT * FROM orders WHERE id = ? AND user_id = ?';
+    const params = userRole === 'admin'
+        ? [orderId]
+        : [orderId, userId];
 
-    // Проверяем существование заказа и принадлежность пользователю
     db.query(
-        'SELECT * FROM orders WHERE id = ? AND user_id = ?',
-        [orderId, userId],
+        query,
+        params,
         (err, rows) => {
             if (err) {
                 console.error('Ошибка при проверке заказа:', err);
@@ -2091,7 +2097,7 @@ app.delete('/orders/:orderId', authenticateToken, (req, res) => {
             }
 
             if (!rows || rows.length === 0) {
-                console.log(`Заказ ${orderId} не найден или не принадлежит пользователю ${userId}`);
+                console.log(`Заказ ${orderId} не найден или нет прав на удаление (роль: ${userRole})`);
                 return res.status(404).json({
                     success: false,
                     error: 'Заказ не найден или у вас нет прав на его удаление'
