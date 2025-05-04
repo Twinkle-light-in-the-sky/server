@@ -1789,7 +1789,7 @@ app.get('/site-orders', async (req, res) => {
         const query = `
             SELECT o.*, 
                    s.title as service_title,
-                   e.full_name as executor_name,
+                   e.fullname as executor_name,
                    os.status_name as status
             FROM orders o
             LEFT JOIN services s ON o.service_id = s.id
