@@ -1339,19 +1339,7 @@ app.delete('/services/:id', async (req, res) => {
 // Эндпоинт для создания проекта
 app.post('/projects', upload.single('projects_background'), async (req, res) => {
     try {
-        console.log('Получен запрос на создание проекта:', {
-            body: req.body,
-            file: req.file ? {
-                fieldname: req.file.fieldname,
-                originalname: req.file.originalname,
-                mimetype: req.file.mimetype,
-                size: req.file.size
-            } : 'No file'
-        });
-
-        const { projects_title, projects_description, is_dark_theme, link } = req.body;
-        console.log('Полученные данные:', { projects_title, projects_description, is_dark_theme, link });
-
+        const { projects_title, projects_description, is_dark_theme, link, block_size } = req.body;
         let imageUrl = null;
 
         // Если есть файл изображения
@@ -1427,17 +1415,19 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
             projects_description, 
             imageUrl, 
             is_dark_theme,
-            link
+            link,
+            block_size
         });
 
-        const insertQuery = 'INSERT INTO projects (projects_title, projects_description, projects_background, is_dark_theme, link) VALUES (?, ?, ?, ?, ?)';
+        const insertQuery = 'INSERT INTO projects (projects_title, projects_description, projects_background, is_dark_theme, link, block_size) VALUES (?, ?, ?, ?, ?, ?)';
         
         db.query(insertQuery, [
             projects_title, 
             projects_description, 
             imageUrl, 
             is_dark_theme === 'true' ? 1 : 0,
-            link || ''  // Передаем пустую строку вместо null
+            link || '',
+            block_size || 'col-6'  // Добавляем block_size с значением по умолчанию
         ], (err, result) => {
             if (err) {
                 console.error("Ошибка при создании проекта в БД:", err);
@@ -1456,7 +1446,9 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
                     projects_title,
                     projects_description,
                     projects_background: imageUrl,
-                    is_dark_theme: is_dark_theme === 'true'
+                    is_dark_theme: is_dark_theme === 'true',
+                    link: link || '',
+                    block_size: block_size || 'col-6'
                 }
             });
         });
