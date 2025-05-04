@@ -377,7 +377,7 @@ app.get('/projects', async (req, res) => {
         console.log('Получен запрос на получение проектов');
         
         const projects = await new Promise((resolve, reject) => {
-            db.query('SELECT id, projects_title, projects_description, projects_background, is_dark_theme, link FROM projects ORDER BY id ASC', (err, results) => {
+            db.query('SELECT id, projects_title, projects_description, projects_background, is_dark_theme, link, block_size FROM projects ORDER BY id ASC', (err, results) => {
             if (err) {
                     console.error('Ошибка при получении проектов:', err);
                     reject(err);
@@ -1339,6 +1339,8 @@ app.delete('/services/:id', async (req, res) => {
 // Эндпоинт для создания проекта
 app.post('/projects', upload.single('projects_background'), async (req, res) => {
     try {
+        console.log('Received project data:', req.body); // Добавляем для отладки
+        
         const { projects_title, projects_description, is_dark_theme, link, block_size } = req.body;
         let imageUrl = null;
 
@@ -1427,7 +1429,7 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
             imageUrl, 
             is_dark_theme === 'true' ? 1 : 0,
             link || '',
-            block_size || 'col-6'  // Добавляем block_size с значением по умолчанию
+            block_size || 'col-6'
         ], (err, result) => {
             if (err) {
                 console.error("Ошибка при создании проекта в БД:", err);
