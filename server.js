@@ -807,7 +807,7 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
-    const { username, email, phone, address } = req.body;
+    const { username, email, phone, address, coordinates } = req.body;
 
     // Получаем текущего пользователя
     const [user] = await new Promise((resolve, reject) => {
@@ -885,24 +885,39 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
       updateValues.push(address);
     }
 
-    if (updateFields.length > 0) {
-      updateValues.push(userId);
-      const updateQuery = `UPDATE user SET ${updateFields.join(', ')} WHERE id = ?`;
-      
-      await new Promise((resolve, reject) => {
-        db.query(updateQuery, updateValues, (error, results) => {
-          if (error) {
-            console.error('Ошибка при обновлении данных пользователя:', error);
-            reject(error);
-          }
-          resolve(results);
-        });
-      });
+    if (coordinates !== undefined) {
+      updateFields.push('coordinates = ?');
+      updateValues.push(JSON.stringify(coordinates));
     }
+
+    // Если нет полей для обновления, возвращаем ошибку
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: 'Нет данных для обновления' });
+    }
+
+    // Добавляем id в конец массива значений
+    updateValues.push(userId);
+
+    // Формируем финальный SQL запрос
+    const updateQuery = `UPDATE user SET ${updateFields.join(', ')} WHERE id = ?`;
+
+    console.log('SQL Query:', updateQuery);
+    console.log('Values:', updateValues);
+
+    // Выполняем обновление
+    await new Promise((resolve, reject) => {
+      db.query(updateQuery, updateValues, (error, results) => {
+        if (error) {
+          console.error('Ошибка при обновлении данных пользователя:', error);
+          reject(error);
+        }
+        resolve(results);
+      });
+    });
 
     // Получаем обновленного пользователя
     const [updatedUser] = await new Promise((resolve, reject) => {
-      db.query('SELECT id, username, email, phone, address, avatar, role FROM user WHERE id = ?', [userId], (error, results) => {
+      db.query('SELECT id, username, email, phone, address, avatar, role, coordinates FROM user WHERE id = ?', [userId], (error, results) => {
         if (error) {
           console.error('Ошибка при получении обновленного пользователя:', error);
           reject(error);
