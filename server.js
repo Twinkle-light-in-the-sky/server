@@ -1788,13 +1788,15 @@ app.get('/site-orders', async (req, res) => {
     try {
         const query = `
             SELECT o.*, 
-                   s.title as service_title,
-                   e.fullname as executor_name,
-                   os.status_name as status
+                s.title as service_title,
+                e.fullname as executor_name,
+                os.status_name as status,
+                u.username as customer_name
             FROM orders o
             LEFT JOIN services s ON o.service_id = s.id
             LEFT JOIN executors e ON o.executor_id = e.id
             LEFT JOIN order_statuses os ON o.status_id = os.id
+            LEFT JOIN user u ON o.user_id = u.id
         `;
 
         db.query(query, (error, results) => {
