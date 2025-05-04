@@ -2236,6 +2236,73 @@ app.put('/orders/:orderId/status', authenticateToken, async (req, res) => {
     }
 });
 
+// Эндпоинт для загрузки оверлея проекта (только для админа)
+app.post('/orders/:orderId/upload-overlay', authenticateToken, upload.single('image'), async (req, res) => {
+    try {
+        // Проверка роли (только админ)
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Доступ запрещён' });
+        }
+        const orderId = req.params.orderId;
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'Файл не загружен' });
+        }
+
+        // Пример: загрузка на ImgBB
+        const base64Image = req.file.buffer.toString('base64');
+        const postData = new URLSearchParams();
+        postData.append('image', base64Image);
+        postData.append('key', process.env.IMGBB_API_KEY);
+
+        const options = {
+            hostname: 'api.imgbb.com',
+            path: '/1/upload',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': postData.toString().length
+            }
+        };
+
+        const imgbbResponse = await new Promise((resolve, reject) => {
+            const req2 = https.request(options, (res2) => {
+                let data = '';
+                res2.on('data', (chunk) => { data += chunk; });
+                res2.on('end', () => {
+                    try { resolve(JSON.parse(data)); }
+                    catch (e) { reject(e); }
+                });
+            });
+            req2.on('error', (error) => { reject(error); });
+            req2.write(postData.toString());
+            req2.end();
+        });
+
+        if (!imgbbResponse.success) {
+            throw new Error('Ошибка при загрузке изображения на ImgBB');
+        }
+
+        const imageUrl = imgbbResponse.data.url;
+
+        // Сохраняем ссылку в заказе
+        await new Promise((resolve, reject) => {
+            db.query(
+                'UPDATE orders SET project_overlay_image = ? WHERE id = ?',
+                [imageUrl, orderId],
+                (err) => {
+                    if (err) return reject(err);
+                    resolve();
+                }
+            );
+        });
+
+        res.json({ success: true, imageUrl });
+    } catch (error) {
+        console.error('Ошибка при загрузке оверлея проекта:', error);
+        res.status(500).json({ success: false, message: 'Ошибка сервера' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
