@@ -2401,7 +2401,7 @@ app.post('/orders/:orderId/upload-overlay', authenticateToken, upload.single('im
 });
 
 // Получить сообщения чата
-app.get('/api/chats/:chatId/messages', (req, res) => {
+app.get('/chats/:chatId/messages', (req, res) => {
     const chatId = req.params.chatId;
     db.query(
         'SELECT * FROM messages WHERE chat_id = ? ORDER BY timestamp ASC',
@@ -2417,7 +2417,7 @@ app.get('/api/chats/:chatId/messages', (req, res) => {
 });
 
 // Отправить сообщение
-app.post('/api/chats/:chatId/messages', (req, res) => {
+app.post('/chats/:chatId/messages', (req, res) => {
     const chatId = req.params.chatId;
     const { text, sender_id } = req.body;
     if (!text || !sender_id) {
@@ -2444,7 +2444,7 @@ app.post('/api/chats/:chatId/messages', (req, res) => {
 });
 
 // Создать чат (например, при новом заказе)
-app.post('/api/chats', (req, res) => {
+app.post('/chats', (req, res) => {
     const { title } = req.body;
     if (!title) return res.status(400).json({ error: 'title обязателен' });
     db.query(
