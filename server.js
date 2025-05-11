@@ -1037,56 +1037,85 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, is_dark_theme } = req.body;
+        
+        console.log('Получен запрос на обновление услуги:', {
+            id,
+            title,
+            description,
+            is_dark_theme,
+            hasFile: !!req.file
+        });
+
         let imageUrl = null;
 
         // Если загружено новое изображение
         if (req.file) {
-            // Конвертируем буфер в base64
-            const base64Image = req.file.buffer.toString('base64');
-
-            // Загружаем изображение на ImgBB
-            const postData = new URLSearchParams();
-            postData.append('image', base64Image);
-            postData.append('key', process.env.IMGBB_API_KEY);
-
-            const options = {
-                hostname: 'api.imgbb.com',
-                path: '/1/upload',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Content-Length': postData.toString().length
-                }
-            };
-
-            const imgbbResponse = await new Promise((resolve, reject) => {
-                const req = https.request(options, (res) => {
-                    let data = '';
-                    res.on('data', (chunk) => {
-                        data += chunk;
-                    });
-                    res.on('end', () => {
-                        try {
-                            resolve(JSON.parse(data));
-                        } catch (e) {
-                            reject(e);
-                        }
-                    });
-                });
-
-                req.on('error', (error) => {
-                    reject(error);
-                });
-
-                req.write(postData.toString());
-                req.end();
+            console.log('Обработка нового изображения:', {
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+                size: req.file.size
             });
 
-            if (!imgbbResponse.success) {
-                throw new Error('Ошибка при загрузке изображения на ImgBB');
-            }
+            try {
+                // Конвертируем буфер в base64
+                const base64Image = req.file.buffer.toString('base64');
 
-            imageUrl = imgbbResponse.data.url;
+                // Загружаем изображение на ImgBB
+                const postData = new URLSearchParams();
+                postData.append('image', base64Image);
+                postData.append('key', process.env.IMGBB_API_KEY);
+
+                const options = {
+                    hostname: 'api.imgbb.com',
+                    path: '/1/upload',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Content-Length': postData.toString().length
+                    }
+                };
+
+                console.log('Отправка запроса к ImgBB API');
+                const imgbbResponse = await new Promise((resolve, reject) => {
+                    const req = https.request(options, (res) => {
+                        let data = '';
+                        res.on('data', (chunk) => {
+                            data += chunk;
+                        });
+                        res.on('end', () => {
+                            try {
+                                const parsedData = JSON.parse(data);
+                                console.log('Ответ от ImgBB:', parsedData);
+                                resolve(parsedData);
+                            } catch (e) {
+                                console.error('Ошибка парсинга ответа ImgBB:', e);
+                                reject(e);
+                            }
+                        });
+                    });
+
+                    req.on('error', (error) => {
+                        console.error('Ошибка запроса к ImgBB:', error);
+                        reject(error);
+                    });
+
+                    req.write(postData.toString());
+                    req.end();
+                });
+
+                if (!imgbbResponse.success) {
+                    throw new Error('Ошибка при загрузке изображения на ImgBB');
+                }
+
+                imageUrl = imgbbResponse.data.url;
+                console.log('Изображение успешно загружено:', imageUrl);
+            } catch (error) {
+                console.error('Ошибка при обработке изображения:', error);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при загрузке изображения'
+                });
+            }
         }
 
         // Формируем SQL запрос
@@ -1115,7 +1144,10 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
 
         // Если нет полей для обновления, возвращаем ошибку
         if (updateFields.length === 0) {
-            return res.status(400).json({ error: 'Нет данных для обновления' });
+            return res.status(400).json({ 
+                success: false,
+                error: 'Нет данных для обновления' 
+            });
         }
 
         // Добавляем id в конец массива значений
@@ -1131,17 +1163,42 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
         db.query(updateQuery, updateValues, (err, result) => {
             if (err) {
                 console.error("Ошибка при обновлении услуги:", err);
-                return res.status(500).json({ error: 'Ошибка при обновлении услуги' });
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при обновлении услуги' 
+                });
             }
+
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ 
+                    success: false,
+                    error: 'Услуга не найдена' 
+                });
+            }
+
+            console.log('Услуга успешно обновлена:', {
+                id,
+                affectedRows: result.affectedRows
+            });
+
             res.json({ 
                 success: true,
                 message: 'Услуга успешно обновлена',
-                data: { id, title, description, background_image: imageUrl }
+                data: { 
+                    id, 
+                    title, 
+                    description, 
+                    background_image: imageUrl,
+                    is_dark_theme: is_dark_theme === 'true'
+                }
             });
         });
     } catch (error) {
         console.error("Ошибка при обработке запроса /services/:id:", error);
-        res.status(500).json({ error: 'Ошибка сервера' });
+        res.status(500).json({ 
+            success: false,
+            error: 'Ошибка сервера' 
+        });
     }
 });
 
@@ -2341,6 +2398,73 @@ app.post('/orders/:orderId/upload-overlay', authenticateToken, upload.single('im
         console.error('Ошибка при загрузке оверлея проекта:', error);
         res.status(500).json({ success: false, message: 'Ошибка сервера' });
     }
+});
+
+// Получить сообщения чата
+app.get('/api/chats/:chatId/messages', (req, res) => {
+    const chatId = req.params.chatId;
+    db.query(
+        'SELECT * FROM messages WHERE chat_id = ? ORDER BY timestamp ASC',
+        [chatId],
+        (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении сообщений:', err);
+                return res.status(500).json({ error: 'Ошибка при получении сообщений' });
+            }
+            res.json(results);
+        }
+    );
+});
+
+// Отправить сообщение
+app.post('/api/chats/:chatId/messages', (req, res) => {
+    const chatId = req.params.chatId;
+    const { text, sender_id } = req.body;
+    if (!text || !sender_id) {
+        return res.status(400).json({ error: 'Текст и sender_id обязательны' });
+    }
+    db.query(
+        'INSERT INTO messages (chat_id, sender_id, text) VALUES (?, ?, ?)',
+        [chatId, sender_id, text],
+        (err, result) => {
+            if (err) {
+                console.error('Ошибка при отправке сообщения:', err);
+                return res.status(500).json({ error: 'Ошибка при отправке сообщения' });
+            }
+            db.query(
+                'SELECT * FROM messages WHERE id = ?',
+                [result.insertId],
+                (err, rows) => {
+                    if (err) return res.status(500).json({ error: 'Ошибка при получении сообщения' });
+                    res.json(rows[0]);
+                }
+            );
+        }
+    );
+});
+
+// Создать чат (например, при новом заказе)
+app.post('/api/chats', (req, res) => {
+    const { title } = req.body;
+    if (!title) return res.status(400).json({ error: 'title обязателен' });
+    db.query(
+        'INSERT INTO chats (title) VALUES (?)',
+        [title],
+        (err, result) => {
+            if (err) {
+                console.error('Ошибка при создании чата:', err);
+                return res.status(500).json({ error: 'Ошибка при создании чата' });
+            }
+            db.query(
+                'SELECT * FROM chats WHERE id = ?',
+                [result.insertId],
+                (err, rows) => {
+                    if (err) return res.status(500).json({ error: 'Ошибка при получении чата' });
+                    res.json(rows[0]);
+                }
+            );
+        }
+    );
 });
 
 const PORT = process.env.PORT || 3001;
