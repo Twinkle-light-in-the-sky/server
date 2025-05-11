@@ -2445,11 +2445,11 @@ app.post('/chats/:chatId/messages', (req, res) => {
 
 // Создать чат (например, при новом заказе)
 app.post('/chats', (req, res) => {
-    const { title } = req.body;
-    if (!title) return res.status(400).json({ error: 'title обязателен' });
+    const { title, user_id, executor_id } = req.body;
+    if (!title || !user_id || !executor_id) return res.status(400).json({ error: 'title, user_id, executor_id обязательны' });
     db.query(
-        'INSERT INTO chats (title) VALUES (?)',
-        [title],
+        'INSERT INTO chats (title, user_id, executor_id) VALUES (?, ?, ?)',
+        [title, user_id, executor_id],
         (err, result) => {
             if (err) {
                 console.error('Ошибка при создании чата:', err);
@@ -2463,6 +2463,22 @@ app.post('/chats', (req, res) => {
                     res.json(rows[0]);
                 }
             );
+        }
+    );
+});
+
+// Получить чаты пользователя (где он заказчик или исполнитель)
+app.get('/chats/user/:userId', (req, res) => {
+    const userId = req.params.userId;
+    db.query(
+        'SELECT * FROM chats WHERE user_id = ? OR executor_id = ?',
+        [userId, userId],
+        (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении чатов:', err);
+                return res.status(500).json({ error: 'Ошибка при получении чатов' });
+            }
+            res.json(results);
         }
     );
 });
