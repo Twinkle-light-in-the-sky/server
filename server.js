@@ -2468,19 +2468,57 @@ app.post('/chats', (req, res) => {
 });
 
 // Получить чаты пользователя (где он заказчик или исполнитель)
-app.get('/chats/user/:userId', (req, res) => {
-    const userId = req.params.userId;
-    db.query(
-        'SELECT * FROM chats WHERE user_id = ? OR executor_id = ?',
-        [userId, userId],
-        (err, results) => {
+app.get('/chats/user/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        console.log('Получение чатов для пользователя:', userId);
+
+        // Сначала получаем информацию о пользователе
+        const [user] = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM user WHERE id = ?', [userId], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при получении пользователя:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+
+        // Получаем чаты, где пользователь является либо заказчиком, либо исполнителем
+        const query = `
+            SELECT c.*, 
+                   u.username as user_name,
+                   e.fullname as executor_name,
+                   o.project_name
+            FROM chats c
+            LEFT JOIN user u ON c.user_id = u.id
+            LEFT JOIN executors e ON c.executor_id = e.id
+            LEFT JOIN orders o ON c.id = o.chat_id
+            WHERE c.user_id = ? 
+               OR c.executor_id = (
+                   SELECT id 
+                   FROM executors 
+                   WHERE user_id = ?
+               )
+        `;
+
+        db.query(query, [userId, userId], (err, results) => {
             if (err) {
                 console.error('Ошибка при получении чатов:', err);
                 return res.status(500).json({ error: 'Ошибка при получении чатов' });
             }
+            console.log('Найдены чаты:', results);
             res.json(results);
-        }
-    );
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса чатов:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
 });
 
 const PORT = process.env.PORT || 3001;
@@ -2527,6 +2565,63 @@ app.put('/orders/:orderId', authenticateToken, async (req, res) => {
         res.status(500).json({ 
             success: false, 
             error: 'Ошибка сервера при обновлении chat_id' 
+        });
+    }
+});
+
+// Создание связи между пользователем и исполнителем
+app.post('/executors/link', authenticateToken, async (req, res) => {
+    try {
+        const { user_id, fullname } = req.body;
+
+        if (!user_id || !fullname) {
+            return res.status(400).json({
+                success: false,
+                error: 'Необходимо указать user_id и fullname'
+            });
+        }
+
+        // Проверяем, существует ли уже связь
+        const [existingExecutor] = await new Promise((resolve, reject) => {
+            db.query(
+                'SELECT * FROM executors WHERE user_id = ?',
+                [user_id],
+                (err, results) => {
+                    if (err) reject(err);
+                    else resolve(results);
+                }
+            );
+        });
+
+        if (existingExecutor) {
+            return res.status(400).json({
+                success: false,
+                error: 'Этот пользователь уже является исполнителем'
+            });
+        }
+
+        // Создаем запись исполнителя
+        const result = await new Promise((resolve, reject) => {
+            db.query(
+                'INSERT INTO executors (user_id, fullname) VALUES (?, ?)',
+                [user_id, fullname],
+                (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                }
+            );
+        });
+
+        res.json({
+            success: true,
+            message: 'Пользователь успешно назначен исполнителем',
+            executor_id: result.insertId
+        });
+    } catch (error) {
+        console.error('Ошибка при создании связи исполнителя:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка сервера при создании связи исполнителя'
         });
     }
 });
