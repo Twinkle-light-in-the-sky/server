@@ -2521,12 +2521,6 @@ app.get('/chats/user/:userId', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3001;
-
-app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
-});
-
 // Обновление chat_id в заказе
 app.put('/orders/:orderId', authenticateToken, async (req, res) => {
     try {
@@ -2626,3 +2620,40 @@ app.post('/executors/link', authenticateToken, async (req, res) => {
     }
 });
 
+// Удаление чата и всех связанных сообщений
+app.delete('/chats/:chatId', async (req, res) => {
+    const chatId = req.params.chatId;
+    try {
+        // Удаляем все сообщения этого чата
+        await new Promise((resolve, reject) => {
+            db.query('DELETE FROM messages WHERE chat_id = ?', [chatId], (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+        // Обнуляем chat_id в заказах, связанных с этим чатом
+        await new Promise((resolve, reject) => {
+            db.query('UPDATE orders SET chat_id = NULL WHERE chat_id = ?', [chatId], (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+        // Удаляем сам чат
+        await new Promise((resolve, reject) => {
+            db.query('DELETE FROM chats WHERE id = ?', [chatId], (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+        res.json({ success: true, message: 'Чат и все сообщения удалены' });
+    } catch (error) {
+        console.error('Ошибка при удалении чата:', error);
+        res.status(500).json({ success: false, error: 'Ошибка при удалении чата' });
+    }
+});
+
+const PORT = process.env.PORT || 3001;
+
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+});
