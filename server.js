@@ -2489,3 +2489,45 @@ app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
 
+// Обновление chat_id в заказе
+app.put('/orders/:orderId', authenticateToken, async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        const { chat_id } = req.body;
+
+        if (!chat_id) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Не указан chat_id' 
+            });
+        }
+
+        // Обновляем chat_id в заказе
+        await new Promise((resolve, reject) => {
+            db.query(
+                'UPDATE orders SET chat_id = ? WHERE id = ?',
+                [chat_id, orderId],
+                (err, result) => {
+                    if (err) {
+                        console.error('Ошибка при обновлении chat_id:', err);
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                }
+            );
+        });
+
+        res.json({ 
+            success: true, 
+            message: 'chat_id успешно обновлен' 
+        });
+    } catch (error) {
+        console.error('Ошибка при обновлении chat_id:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка сервера при обновлении chat_id' 
+        });
+    }
+});
+
