@@ -2507,13 +2507,38 @@ app.get('/chats/user/:userId', async (req, res) => {
                )
         `;
 
-        db.query(query, [userId, userId], (err, results) => {
+        db.query(query, [userId, userId], async (err, results) => {
             if (err) {
                 console.error('Ошибка при получении чатов:', err);
                 return res.status(500).json({ error: 'Ошибка при получении чатов' });
             }
             console.log('Найдены чаты:', results);
-            res.json(results);
+
+            // --- ДОБАВЛЯЕМ unread_count ДЛЯ КАЖДОГО ЧАТА ---
+            const chatIds = results.map(chat => chat.id);
+            const unreadCounts = await Promise.all(chatIds.map(chatId => {
+                return new Promise((resolve) => {
+                    db.query(
+                        `SELECT COUNT(*) as unread_count
+                         FROM messages m
+                         WHERE m.chat_id = ? AND m.sender_id != ? 
+                         AND m.id NOT IN (
+                             SELECT message_id FROM message_reads WHERE user_id = ?
+                         )`,
+                        [chatId, userId, userId],
+                        (err, rows) => {
+                            if (err) return resolve({ chatId, unread_count: 0 });
+                            resolve({ chatId, unread_count: rows[0].unread_count });
+                        }
+                    );
+                });
+            }));
+
+            const chatsWithUnread = results.map(chat => {
+                const unread = unreadCounts.find(u => u.chatId === chat.id);
+                return { ...chat, unread_count: unread ? unread.unread_count : 0 };
+            });
+            res.json(chatsWithUnread);
         });
     } catch (error) {
         console.error('Ошибка при обработке запроса чатов:', error);
@@ -2650,6 +2675,35 @@ app.delete('/chats/:chatId', async (req, res) => {
         console.error('Ошибка при удалении чата:', error);
         res.status(500).json({ success: false, error: 'Ошибка при удалении чата' });
     }
+});
+
+// --- ОТМЕТКА СООБЩЕНИЙ КАК ПРОЧИТАННЫХ ---
+app.post('/chats/:chatId/read', authenticateToken, async (req, res) => {
+    const chatId = req.params.chatId;
+    const userId = req.user.id;
+
+    // Получаем id всех сообщений, которые пользователь ещё не читал (и не свои)
+    db.query(
+        `SELECT id FROM messages 
+         WHERE chat_id = ? AND sender_id != ? 
+         AND id NOT IN (SELECT message_id FROM message_reads WHERE user_id = ?)`,
+        [chatId, userId, userId],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Ошибка при поиске сообщений' });
+            if (!rows.length) return res.json({ success: true, updated: 0 });
+
+            // Формируем массив для вставки
+            const values = rows.map(row => [row.id, userId]);
+            db.query(
+                'INSERT IGNORE INTO message_reads (message_id, user_id) VALUES ?',
+                [values],
+                (err2, result) => {
+                    if (err2) return res.status(500).json({ error: 'Ошибка при отметке сообщений как прочитанных' });
+                    res.json({ success: true, updated: result.affectedRows });
+                }
+            );
+        }
+    );
 });
 
 const PORT = process.env.PORT || 3001;
