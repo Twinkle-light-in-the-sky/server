@@ -161,9 +161,11 @@ const corsOptions = {
 // Применяем CORS middleware
 app.use(cors(corsOptions));
 
-// Применяем CSRF защиту ко всем маршрутам, кроме /csrf-token
+// Применяем CSRF защиту ко всем маршрутам, кроме /csrf-token, /logpage, /regpage
 app.use((req, res, next) => {
-    if (req.path === '/csrf-token') {
+    // CSRF не нужен для логина, регистрации и получения токена
+    const csrfExcluded = ['/csrf-token', '/logpage', '/regpage'];
+    if (csrfExcluded.includes(req.path)) {
         next();
     } else {
         csrfProtection(req, res, next);
@@ -720,6 +722,9 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
         const defaultAdditionalInfo = additional_info || '';
         const defaultNeedReceipt = need_receipt ? 1 : 0;
 
+        // Получаем цену шаблона
+        const templatePrice = template.price || 0;
+
         // Создаем заказ
         const insertQuery = `
             INSERT INTO orders (
@@ -736,7 +741,7 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
             template_id,
             defaultSiteType,
             defaultBlocksCount,
-            price,
+            templatePrice, // <-- теперь из базы
             defaultAdditionalInfo,
             defaultNeedReceipt,
             status_id,
@@ -2297,20 +2302,44 @@ app.post('/orders', (req, res) => {
         selected_addons 
     } = req.body;
 
-    // Проверяем существование пользователя
-    const checkUserQuery = 'SELECT id FROM user WHERE id = ?';
-    db.query(checkUserQuery, [user_id], (err, results) => {
+    // Получаем цену шаблона по имени
+    const getTemplatePriceQuery = 'SELECT price FROM templates WHERE name = ? LIMIT 1';
+    db.query(getTemplatePriceQuery, [template_name], (err, templateResults) => {
         if (err) {
-            console.error('Ошибка при проверке пользователя:', err);
-            return res.status(500).json({ error: 'Ошибка сервера' });
+            console.error('Ошибка при получении цены шаблона:', err);
+            return res.status(500).json({ error: 'Ошибка при получении цены шаблона' });
         }
-        
-        if (results.length === 0) {
-            return res.status(400).json({ error: 'Пользователь не найден' });
-        }
+        const templatePrice = templateResults && templateResults.length > 0 ? templateResults[0].price : 0;
 
-        const orderQuery = `
-            INSERT INTO orders (
+        // Проверяем существование пользователя
+        const checkUserQuery = 'SELECT id FROM user WHERE id = ?';
+        db.query(checkUserQuery, [user_id], (err, results) => {
+            if (err) {
+                console.error('Ошибка при проверке пользователя:', err);
+                return res.status(500).json({ error: 'Ошибка сервера' });
+            }
+            
+            if (results.length === 0) {
+                return res.status(400).json({ error: 'Пользователь не найден' });
+            }
+
+            const orderQuery = `
+                INSERT INTO orders (
+                    project_name, 
+                    site_type, 
+                    blocks_count, 
+                    template_name, 
+                    service_id, 
+                    user_id, 
+                    additional_info, 
+                    need_receipt, 
+                    price, 
+                    order_date, 
+                    status_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1)
+            `;
+
+            const orderValues = [
                 project_name, 
                 site_type, 
                 blocks_count, 
@@ -2319,59 +2348,45 @@ app.post('/orders', (req, res) => {
                 user_id, 
                 additional_info, 
                 need_receipt, 
-                price, 
-                order_date, 
-                status_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1)
-        `;
+                templatePrice // <-- теперь из базы
+            ];
 
-        const orderValues = [
-            project_name, 
-            site_type, 
-            blocks_count, 
-            template_name, 
-            service_id, 
-            user_id, 
-            additional_info, 
-            need_receipt, 
-            price
-        ];
+            db.query(orderQuery, orderValues, (err, result) => {
+                if (err) {
+                    console.error('Ошибка при создании заказа:', err);
+                    return res.status(500).json({ error: 'Ошибка сервера' });
+                }
 
-        db.query(orderQuery, orderValues, (err, result) => {
-            if (err) {
-                console.error('Ошибка при создании заказа:', err);
-                return res.status(500).json({ error: 'Ошибка сервера' });
-            }
+                const orderId = result.insertId;
 
-            const orderId = result.insertId;
+                // Если есть выбранные доп. услуги, добавляем их
+                if (selected_addons && selected_addons.length > 0) {
+                    const addonQuery = `
+                        INSERT INTO order_addons (order_id, addon_id, price_at_time) 
+                        SELECT ?, id, price 
+                        FROM service_addons 
+                        WHERE id IN (?)
+                    `;
 
-            // Если есть выбранные доп. услуги, добавляем их
-            if (selected_addons && selected_addons.length > 0) {
-                const addonQuery = `
-                    INSERT INTO order_addons (order_id, addon_id, price_at_time) 
-                    SELECT ?, id, price 
-                    FROM service_addons 
-                    WHERE id IN (?)
-                `;
-
-                db.query(addonQuery, [orderId, selected_addons], (err, result) => {
-                    if (err) {
-                        console.error('Ошибка при добавлении дополнительных услуг:', err);
-                        return res.status(500).json({ error: 'Ошибка при добавлении дополнительных услуг' });
-                    }
+                    db.query(addonQuery, [orderId, selected_addons], (err, result) => {
+                        if (err) {
+                            console.error('Ошибка при добавлении дополнительных услуг:', err);
+                            return res.status(500).json({ error: 'Ошибка при добавлении дополнительных услуг' });
+                        }
+                        res.json({
+                            success: true,
+                            orderId: orderId,
+                            message: 'Заказ успешно создан с дополнительными услугами'
+                        });
+                    });
+                } else {
                     res.json({
                         success: true,
                         orderId: orderId,
-                        message: 'Заказ успешно создан с дополнительными услугами'
+                        message: 'Заказ успешно создан'
                     });
-                });
-            } else {
-                res.json({
-                    success: true,
-                    orderId: orderId,
-                    message: 'Заказ успешно создан'
-                });
-            }
+                }
+            });
         });
     });
 });
