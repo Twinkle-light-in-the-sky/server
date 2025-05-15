@@ -192,7 +192,15 @@ if (!process.env.IMGBB_API_KEY) {
 // Настройка CORS с улучшенной конфигурацией
 const corsOptions = {
     origin: function(origin, callback) {
-        const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'];
+        const allowedOrigins = [
+            'http://localhost:3000', 
+            'http://localhost:3001', 
+            'https://barsikec.beget.tech', 
+            'http://barsikec.beget.tech', 
+            'https://startset-app.vercel.app', 
+            'https://server-9va8.onrender.com',
+            'http://server-9va8.onrender.com'
+        ];
         if (!origin || allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
@@ -227,7 +235,15 @@ app.options('*', cors(corsOptions));
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'];
+    const allowedOrigins = [
+        'http://localhost:3000', 
+        'http://localhost:3001', 
+        'https://barsikec.beget.tech', 
+        'http://barsikec.beget.tech', 
+        'https://startset-app.vercel.app', 
+        'https://server-9va8.onrender.com',
+        'http://server-9va8.onrender.com'
+    ];
     
     if (origin && allowedOrigins.includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
