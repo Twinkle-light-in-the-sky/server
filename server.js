@@ -203,7 +203,9 @@ const corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'X-CSRF-Token'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: true,
-    maxAge: 86400
+    maxAge: 86400,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
@@ -876,9 +878,16 @@ app.get('/orders', async (req, res) => {
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
             console.log("Полученные заказы для пользователя:", userId, results);
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            
+            // Настройка CORS заголовков
+            const origin = req.headers.origin;
+            if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
+                res.header('Access-Control-Allow-Origin', origin);
+                res.header('Access-Control-Allow-Credentials', 'true');
+            }
+            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
+            
             res.json(results);
         });
     } catch (error) {
@@ -1353,7 +1362,7 @@ app.put('/services/:id', csrfProtection, upload.single('image'), async (req, res
                 console.error('Ошибка при обработке изображения:', error);
                 return res.status(500).json({ 
                     success: false,
-                    error: 'Ошибка при загрузке изображения'
+                    error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
                 });
             }
         }
