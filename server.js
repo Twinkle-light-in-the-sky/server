@@ -764,6 +764,12 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
             });
         }
 
+        // Устанавливаем значения по умолчанию для nullable полей
+        const defaultSiteType = site_type || 'multipage';
+        const defaultBlocksCount = blocks_count || 0;
+        const defaultAdditionalInfo = additional_info || '';
+        const defaultNeedReceipt = need_receipt ? 1 : 0;
+
         // Создаем заказ
         const insertQuery = `
             INSERT INTO orders (
@@ -778,11 +784,11 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
             user_id,
             service_id,
             template_id,
-            site_type,
-            blocks_count,
+            defaultSiteType,
+            defaultBlocksCount,
             price,
-            additional_info,
-            need_receipt ? 1 : 0,
+            defaultAdditionalInfo,
+            defaultNeedReceipt,
             status_id,
             executor_id,
             order_date
@@ -2121,7 +2127,7 @@ app.get('/site-orders', async (req, res) => {
             SELECT o.*, 
                 s.title as service_title,
                 e.fullname as executor_name,
-                os.status_name as status,
+                os.status_name,
                 u.username as customer_name
             FROM orders o
             LEFT JOIN services s ON o.service_id = s.id
