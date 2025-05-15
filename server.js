@@ -207,6 +207,16 @@ app.use('/uploads/services-bg', express.static(servicesBgPath));
 const projectsBgPath = path.join(__dirname, 'uploads', 'projects-bg');
 app.use('/uploads/projects-bg', express.static(projectsBgPath));
 
+// Настройка multer для загрузки файлов
+const storage = multer.memoryStorage();
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 32 * 1024 * 1024, // 32MB
+        files: 5
+    }
+});
+
 // Middleware для проверки JWT токена
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
