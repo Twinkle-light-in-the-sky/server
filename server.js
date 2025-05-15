@@ -117,6 +117,7 @@ const csrfProtection = csrf({
         path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
+        sameSite: 'none',
         maxAge: 3600 // 1 час
     }
 });
@@ -176,6 +177,7 @@ if (!process.env.IMGBB_API_KEY) {
   console.log('IMGBB_API_KEY установлен напрямую');
 }
 
+// Настройка CORS с улучшенной конфигурацией
 const corsOptions = {
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -184,6 +186,8 @@ const corsOptions = {
     credentials: true,
     maxAge: 86400
 };
+
+app.use(cors(corsOptions));
 
 // Добавляем middleware для логирования CORS
 app.use((req, res, next) => {
@@ -195,8 +199,6 @@ app.use((req, res, next) => {
     });
     next();
 });
-
-app.use(cors(corsOptions));
 
 // Обработка preflight запросов
 app.options('*', cors(corsOptions));
@@ -213,7 +215,6 @@ app.use((req, res, next) => {
     res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
-        console.log('Handling OPTIONS request');
         return res.sendStatus(200);
     }
     next();
