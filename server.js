@@ -818,6 +818,15 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
             });
         });
 
+        // Настройка CORS заголовков
+        const origin = req.headers.origin;
+        if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', 'true');
+        }
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
+
         res.json({
             success: true,
             orderId: result.insertId,
@@ -828,12 +837,11 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
         res.status(500).json({ 
             success: false,
             message: 'Внутренняя ошибка сервера',
-            error: error.message, // Показываем текст ошибки
-            stack: error.stack    // (по желанию) Показываем стек вызова
+            error: error.message,
+            stack: error.stack
         });
     }
 });
-
 
 app.get('/executors', async (req, res) => {
     try {
