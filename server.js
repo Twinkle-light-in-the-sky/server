@@ -33,7 +33,7 @@ const sessionConfig = {
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 часа
-        sameSite: 'none'
+        sameSite: 'lax'
     }
 };
 
@@ -126,68 +126,10 @@ const csrfProtection = csrf({
     cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'none',
+        sameSite: 'lax',
         maxAge: 3600 // 1 час
     }
 });
-
-// Применяем CSRF защиту ко всем маршрутам
-app.use(csrfProtection);
-
-// Дополнительные заголовки безопасности
-app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    res.setHeader('X-DNS-Prefetch-Control', 'off');
-    res.setHeader('X-Download-Options', 'noopen');
-    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    next();
-});
-
-// Улучшенная настройка multer для загрузки файлов
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/')
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname))
-    }
-});
-
-const fileFilter = (req, file, cb) => {
-    // Проверка MIME-типа
-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    if (allowedMimeTypes.includes(file.mimetype)) {
-        cb(null, true);
-    } else {
-        cb(new Error('Неверный тип файла. Разрешены только изображения.'), false);
-    }
-};
-
-const upload = multer({
-    storage: storage,
-    fileFilter: fileFilter,
-    limits: {
-        fileSize: 32 * 1024 * 1024, // 32MB
-        files: 5
-    }
-});
-
-// Проверяем наличие необходимых переменных окружения
-console.log('Проверка переменных окружения:');
-console.log('IMGBB_API_KEY:', process.env.IMGBB_API_KEY || 'Отсутствует');
-console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Присутствует' : 'Отсутствует');
-console.log('DB_HOST:', process.env.DB_HOST ? 'Присутствует' : 'Отсутствует');
-
-// Устанавливаем значение IMGBB_API_KEY напрямую, если оно отсутствует в .env
-if (!process.env.IMGBB_API_KEY) {
-  process.env.IMGBB_API_KEY = '194fcc07333e5f7b8036a78bb24a89b0';
-  console.log('IMGBB_API_KEY установлен напрямую');
-}
 
 // Настройка CORS с улучшенной конфигурацией
 const corsOptions = {
@@ -216,7 +158,17 @@ const corsOptions = {
     optionsSuccessStatus: 204
 };
 
+// Применяем CORS middleware
 app.use(cors(corsOptions));
+
+// Применяем CSRF защиту ко всем маршрутам, кроме /csrf-token
+app.use((req, res, next) => {
+    if (req.path === '/csrf-token') {
+        next();
+    } else {
+        csrfProtection(req, res, next);
+    }
+});
 
 // Добавляем middleware для логирования CORS
 app.use((req, res, next) => {
@@ -231,34 +183,6 @@ app.use((req, res, next) => {
 
 // Обработка preflight запросов
 app.options('*', cors(corsOptions));
-
-// Добавляем middleware для всех запросов
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    const allowedOrigins = [
-        'http://localhost:3000', 
-        'http://localhost:3001', 
-        'https://barsikec.beget.tech', 
-        'http://barsikec.beget.tech', 
-        'https://startset-app.vercel.app', 
-        'https://server-9va8.onrender.com',
-        'http://server-9va8.onrender.com'
-    ];
-    
-    if (origin && allowedOrigins.includes(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
-        res.header('Access-Control-Allow-Credentials', 'true');
-    }
-    
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
-    res.header('Access-Control-Max-Age', '86400');
-    
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
 
 app.use(express.json({ limit: '32mb' }));
 app.use(bodyParser.json({ limit: '32mb' }));
@@ -2774,18 +2698,6 @@ app.post('/report-violation', (req, res) => {
     }
     res.status(204).end();
 });
-
-// Настройка CORS с улучшенной конфигурацией
-app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-        ? ['https://your-production-domain.com'] 
-        : ['http://localhost:3000'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-    credentials: true,
-    maxAge: 86400
-}));
-
 
 // Обновление chat_id в заказе
 app.put('/orders/:orderId', authenticateToken, async (req, res) => {
