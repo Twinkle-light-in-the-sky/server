@@ -2934,7 +2934,7 @@ app.get('/chats/user/:userId', async (req, res) => {
 });
 
 // Эндпоинт для получения CSRF токена
-app.get('/csrf-token', (req, res) => {
+app.get('/csrf-token', csrfProtection, (req, res) => {
     res.json({ csrfToken: req.csrfToken() });
 });
 
