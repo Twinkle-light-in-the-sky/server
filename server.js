@@ -25,16 +25,27 @@ require('dotenv').config();
 const app = express();
 
 // Настройка сессий
-app.use(session({
+const sessionConfig = {
     secret: process.env.SESSION_SECRET || 'your-secret-key',
     resave: false,
     saveUninitialized: false,
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 часа
+        maxAge: 24 * 60 * 60 * 1000, // 24 часа
+        sameSite: 'none'
     }
-}));
+};
+
+if (process.env.NODE_ENV === 'production') {
+    // В production используем MemoryStore, но с предупреждением
+    console.warn('Warning: Using MemoryStore in production. Consider using a proper session store like Redis or MongoDB.');
+} else {
+    // В development используем MemoryStore
+    sessionConfig.store = new session.MemoryStore();
+}
+
+app.use(session(sessionConfig));
 
 // Парсинг куки
 app.use(cookieParser());
@@ -111,14 +122,17 @@ const loginLimiter = rateLimit({
 });
 
 // Настройка CSRF защиты
-app.use(csrf({
+const csrfProtection = csrf({
     cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'none',
         maxAge: 3600 // 1 час
     }
-}));
+});
+
+// Применяем CSRF защиту ко всем маршрутам
+app.use(csrfProtection);
 
 // Дополнительные заголовки безопасности
 app.use((req, res, next) => {
