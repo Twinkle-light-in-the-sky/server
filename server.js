@@ -110,17 +110,15 @@ const loginLimiter = rateLimit({
     }
 });
 
-// Настройка CSRF защиты с улучшенной конфигурацией
-const csrfProtection = csrf({
+// Настройка CSRF защиты
+app.use(csrf({
     cookie: {
-        key: '_csrf',
-        path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'none',
         maxAge: 3600 // 1 час
     }
-});
+}));
 
 // Дополнительные заголовки безопасности
 app.use((req, res, next) => {
@@ -179,7 +177,14 @@ if (!process.env.IMGBB_API_KEY) {
 
 // Настройка CORS с улучшенной конфигурацией
 const corsOptions = {
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
+    origin: function(origin, callback) {
+        const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'];
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'X-CSRF-Token'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
@@ -206,10 +211,13 @@ app.options('*', cors(corsOptions));
 // Добавляем middleware для всех запросов
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
+    const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'];
+    
+    if (origin && allowedOrigins.includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
         res.header('Access-Control-Allow-Credentials', 'true');
     }
+    
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
     res.header('Access-Control-Max-Age', '86400');
@@ -2920,6 +2928,11 @@ app.get('/chats/user/:userId', async (req, res) => {
         console.error('Ошибка при обработке запроса чатов:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
+});
+
+// Эндпоинт для получения CSRF токена
+app.get('/csrf-token', (req, res) => {
+    res.json({ csrfToken: req.csrfToken() });
 });
 
 
