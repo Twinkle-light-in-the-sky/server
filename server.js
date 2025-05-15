@@ -2289,28 +2289,48 @@ app.get('/templates', (req, res) => {
 
 // Получение цен на услуги
 app.get('/service_pricing', (req, res) => {
-    const query = `
-        SELECT 
-            service_type,
-            base_price,
-            price_per_block,
-            min_blocks,
-            max_blocks
-        FROM service_pricing
-        WHERE is_active = 1
-    `;
-
-    db.query(query, (err, results) => {
-        if (err) {
-            console.error('Ошибка при получении цен:', err);
-            return res.status(500).json({ error: 'Ошибка при получении цен' });
-        }
-        res.json({ data: results });
+    const { service_id } = req.query;
+    let query = 'SELECT * FROM service_pricing WHERE is_active = 1';
+    const params = [];
+    if (service_id) {
+        query += ' AND service_id = ?';
+        params.push(service_id);
+    }
+    db.query(query, params, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
     });
 });
 
+// Получение доп. услуг
+app.get('/service_addons', (req, res) => {
+    const { service_id } = req.query;
+    let query = 'SELECT * FROM service_addons WHERE is_active = 1';
+    const params = [];
+    if (service_id) {
+        query += ' AND service_id = ?';
+        params.push(service_id);
+    }
+    db.query(query, params, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
 
-
+// Получение шаблонов
+app.get('/templates', (req, res) => {
+    const { service_id } = req.query;
+    let query = 'SELECT * FROM templates';
+    const params = [];
+    if (service_id) {
+        query += ' WHERE service_id = ?';
+        params.push(service_id);
+    }
+    db.query(query, params, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
 
 // Создание заказа с дополнительными услугами
 app.post('/orders', (req, res) => {
