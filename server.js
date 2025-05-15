@@ -2651,6 +2651,29 @@ app.post('/chats/:chatId/messages', (req, res) => {
         }
     );
 });
+// Создать чат (например, при новом заказе)
+app.post('/chats', (req, res) => {
+    const { title, user_id, executor_id } = req.body;
+    if (!title || !user_id || !executor_id) return res.status(400).json({ error: 'title, user_id, executor_id обязательны' });
+    db.query(
+        'INSERT INTO chats (title, user_id, executor_id) VALUES (?, ?, ?)',
+        [title, user_id, executor_id],
+        (err, result) => {
+            if (err) {
+                console.error('Ошибка при создании чата:', err);
+                return res.status(500).json({ error: 'Ошибка при создании чата' });
+            }
+            db.query(
+                'SELECT * FROM chats WHERE id = ?',
+                [result.insertId],
+                (err, rows) => {
+                    if (err) return res.status(500).json({ error: 'Ошибка при получении чата' });
+                    res.json(rows[0]);
+                }
+            );
+        }
+    );
+});
 
 // Обработчик CSP violations
 app.post('/report-violation', (req, res) => {
@@ -2672,3 +2695,230 @@ app.use(cors({
     credentials: true,
     maxAge: 86400
 }));
+
+
+// Обновление chat_id в заказе
+app.put('/orders/:orderId', authenticateToken, async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        const { chat_id } = req.body;
+
+        if (!chat_id) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Не указан chat_id' 
+            });
+        }
+
+        // Обновляем chat_id в заказе
+        await new Promise((resolve, reject) => {
+            db.query(
+                'UPDATE orders SET chat_id = ? WHERE id = ?',
+                [chat_id, orderId],
+                (err, result) => {
+                    if (err) {
+                        console.error('Ошибка при обновлении chat_id:', err);
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                }
+            );
+        });
+
+        res.json({ 
+            success: true, 
+            message: 'chat_id успешно обновлен' 
+        });
+    } catch (error) {
+        console.error('Ошибка при обновлении chat_id:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка сервера при обновлении chat_id' 
+        });
+    }
+});
+
+// Создание связи между пользователем и исполнителем
+app.post('/executors/link', authenticateToken, async (req, res) => {
+    try {
+        const { user_id, fullname } = req.body;
+
+        if (!user_id || !fullname) {
+            return res.status(400).json({
+                success: false,
+                error: 'Необходимо указать user_id и fullname'
+            });
+        }
+
+        // Проверяем, существует ли уже связь
+        const [existingExecutor] = await new Promise((resolve, reject) => {
+            db.query(
+                'SELECT * FROM executors WHERE user_id = ?',
+                [user_id],
+                (err, results) => {
+                    if (err) reject(err);
+                    else resolve(results);
+                }
+            );
+        });
+
+        if (existingExecutor) {
+            return res.status(400).json({
+                success: false,
+                error: 'Этот пользователь уже является исполнителем'
+            });
+        }
+
+        // Создаем запись исполнителя
+        const result = await new Promise((resolve, reject) => {
+            db.query(
+                'INSERT INTO executors (user_id, fullname) VALUES (?, ?)',
+                [user_id, fullname],
+                (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                }
+            );
+        });
+
+        res.json({
+            success: true,
+            message: 'Пользователь успешно назначен исполнителем',
+            executor_id: result.insertId
+        });
+    } catch (error) {
+        console.error('Ошибка при создании связи исполнителя:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка сервера при создании связи исполнителя'
+        });
+    }
+});
+
+// Удаление чата и всех связанных сообщений
+app.delete('/chats/:chatId', async (req, res) => {
+    const chatId = req.params.chatId;
+    try {
+        // Удаляем все сообщения этого чата
+        await new Promise((resolve, reject) => {
+            db.query('DELETE FROM messages WHERE chat_id = ?', [chatId], (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+        // Обнуляем chat_id в заказах, связанных с этим чатом
+        await new Promise((resolve, reject) => {
+            db.query('UPDATE orders SET chat_id = NULL WHERE chat_id = ?', [chatId], (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+        // Удаляем сам чат
+        await new Promise((resolve, reject) => {
+            db.query('DELETE FROM chats WHERE id = ?', [chatId], (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+        res.json({ success: true, message: 'Чат и все сообщения удалены' });
+    } catch (error) {
+        console.error('Ошибка при удалении чата:', error);
+        res.status(500).json({ success: false, error: 'Ошибка при удалении чата' });
+    }
+});
+
+// --- ОТМЕТКА СООБЩЕНИЙ КАК ПРОЧИТАННЫХ ---
+app.post('/chats/:chatId/read', authenticateToken, async (req, res) => {
+    const chatId = req.params.chatId;
+    const userId = req.user.id;
+
+    // Получаем id всех сообщений, которые пользователь ещё не читал (и не свои)
+    db.query(
+        `SELECT id FROM messages 
+         WHERE chat_id = ? AND sender_id != ? 
+         AND id NOT IN (SELECT message_id FROM message_reads WHERE user_id = ?)`,
+        [chatId, userId, userId],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Ошибка при поиске сообщений' });
+            if (!rows.length) return res.json({ success: true, updated: 0 });
+
+            // Формируем массив для вставки
+            const values = rows.map(row => [row.id, userId]);
+            db.query(
+                'INSERT IGNORE INTO message_reads (message_id, user_id) VALUES ?',
+                [values],
+                (err2, result) => {
+                    if (err2) return res.status(500).json({ error: 'Ошибка при отметке сообщений как прочитанных' });
+                    res.json({ success: true, updated: result.affectedRows });
+                }
+            );
+        }
+    );
+});
+
+const PORT = process.env.PORT || 3001;
+
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+});
+
+// Получить чаты пользователя (где он заказчик или исполнитель)
+app.get('/chats/user/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        console.log('Получение чатов для пользователя:', userId);
+
+        // Проверяем, существует ли пользователь
+        const [user] = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM user WHERE id = ?', [userId], (err, results) => {
+                if (err) return reject(err);
+                resolve(results);
+            });
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+
+        // Получаем чаты, где пользователь — заказчик или исполнитель
+        const chats = await new Promise((resolve, reject) => {
+            db.query(
+                'SELECT * FROM chats WHERE user_id = ? OR executor_id = ?',
+                [userId, userId],
+                (err, results) => {
+                    if (err) return reject(err);
+                    resolve(results);
+                }
+            );
+        });
+
+        // Получаем количество непрочитанных сообщений для каждого чата
+        const unreadCounts = await new Promise((resolve, reject) => {
+            db.query(
+                `SELECT chat_id AS chatId, COUNT(*) AS unread_count
+                 FROM messages
+                 WHERE chat_id IN (SELECT id FROM chats WHERE user_id = ? OR executor_id = ?)
+                 AND id NOT IN (SELECT message_id FROM message_reads WHERE user_id = ?)
+                 GROUP BY chat_id`,
+                [userId, userId, userId],
+                (err, results) => {
+                    if (err) return reject(err);
+                    resolve(results);
+                }
+            );
+        });
+
+        const chatsWithUnread = chats.map(chat => {
+            const unread = unreadCounts.find(u => u.chatId === chat.id);
+            return { ...chat, unread_count: unread ? unread.unread_count : 0 };
+        });
+
+        res.json(chatsWithUnread);
+    } catch (error) {
+        console.error('Ошибка при обработке запроса чатов:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+
