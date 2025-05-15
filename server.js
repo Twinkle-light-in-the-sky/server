@@ -8,9 +8,158 @@ const path = require('path');
 const multer = require('multer');
 const https = require('https');
 const fs = require('fs');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { body, validationResult } = require('express-validator');
+const csrf = require('csurf');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+const mongoSanitize = require('express-mongo-sanitize');
+const xss = require('xss-clean');
+const hpp = require('hpp');
 
 // Загружаем переменные окружения
 require('dotenv').config();
+
+// Настройка сессий
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'your-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000 // 24 часа
+    }
+}));
+
+// Парсинг куки
+app.use(cookieParser());
+
+// Защита от NoSQL инъекций
+app.use(mongoSanitize());
+
+// Защита от XSS атак
+app.use(xss());
+
+// Защита от HTTP Parameter Pollution
+app.use(hpp());
+
+// Настройка базовых заголовков безопасности
+app.use(helmet());
+
+// Настройка CSP с улучшенной конфигурацией
+app.use(helmet.contentSecurityPolicy({
+    directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        connectSrc: ["'self'", "https://api.imgbb.com"],
+        fontSrc: ["'self'", "https:", "data:"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        sandbox: ['allow-forms', 'allow-scripts', 'allow-same-origin'],
+        reportUri: '/report-violation',
+        workerSrc: ["'self'"],
+        manifestSrc: ["'self'"],
+        prefetchSrc: ["'self'"]
+    },
+    reportOnly: false
+}));
+
+// Улучшенная настройка rate limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 минут
+    max: 100, // лимит запросов
+    message: 'Слишком много запросов с этого IP, пожалуйста, попробуйте позже',
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: false,
+    keyGenerator: (req) => {
+        return req.ip;
+    },
+    handler: (req, res) => {
+        res.status(429).json({
+            success: false,
+            message: 'Слишком много запросов, пожалуйста, попробуйте позже'
+        });
+    }
+});
+
+// Специальный лимитер для авторизации с улучшенной конфигурацией
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Слишком много попыток входа, попробуйте позже',
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: false,
+    keyGenerator: (req) => {
+        return req.ip;
+    },
+    handler: (req, res) => {
+        res.status(429).json({
+            success: false,
+            message: 'Слишком много попыток входа, пожалуйста, попробуйте позже'
+        });
+    }
+});
+
+// Настройка CSRF защиты с улучшенной конфигурацией
+const csrfProtection = csrf({
+    cookie: {
+        key: '_csrf',
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 3600 // 1 час
+    }
+});
+
+// Дополнительные заголовки безопасности
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('X-DNS-Prefetch-Control', 'off');
+    res.setHeader('X-Download-Options', 'noopen');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
+
+// Улучшенная настройка multer для загрузки файлов
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/')
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname))
+    }
+});
+
+const fileFilter = (req, file, cb) => {
+    // Проверка MIME-типа
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error('Неверный тип файла. Разрешены только изображения.'), false);
+    }
+};
+
+const upload = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: {
+        fileSize: 32 * 1024 * 1024, // 32MB
+        files: 5
+    }
+});
 
 // Проверяем наличие необходимых переменных окружения
 console.log('Проверка переменных окружения:');
@@ -23,24 +172,6 @@ if (!process.env.IMGBB_API_KEY) {
   process.env.IMGBB_API_KEY = '194fcc07333e5f7b8036a78bb24a89b0';
   console.log('IMGBB_API_KEY установлен напрямую');
 }
-
-// Настройка multer для обработки файлов
-const storage = multer.memoryStorage();
-const fileFilter = (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-        cb(null, true);
-    } else {
-        cb(new Error('Неверный тип файла. Разрешены только изображения.'), false);
-    }
-};
-
-const upload = multer({
-    storage: storage,
-    fileFilter: fileFilter,
-    limits: {
-        fileSize: 32 * 1024 * 1024 // 32MB
-    }
-});
 
 const corsOptions = {
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
@@ -140,8 +271,41 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-app.post('/regpage', async (req, res) => {
+// Валидация для регистрации
+const registerValidation = [
+    body('username')
+        .trim()
+        .isLength({ min: 3 })
+        .withMessage('Имя пользователя должно быть не менее 3 символов')
+        .escape(),
+    body('email')
+        .isEmail()
+        .withMessage('Введите корректный email')
+        .normalizeEmail(),
+    body('password')
+        .isLength({ min: 8 })
+        .withMessage('Пароль должен быть не менее 8 символов')
+        .matches(/\d/)
+        .withMessage('Пароль должен содержать хотя бы одну цифру')
+];
+
+// Валидация для входа
+const loginValidation = [
+    body('username').trim().escape(),
+    body('password').trim()
+];
+
+app.post('/regpage', registerValidation, async (req, res) => {
     try {
+        // Проверка результатов валидации
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                errors: errors.array()
+            });
+        }
+
         console.log('Получен запрос на регистрацию:', req.body);
         
         // Проверяем обязательные поля
@@ -284,8 +448,17 @@ app.post('/regpage', async (req, res) => {
     }
 });
 
-app.post('/logpage', async (req, res) => {
+app.post('/logpage', loginLimiter, loginValidation, async (req, res) => {
     try {
+        // Проверка результатов валидации
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                errors: errors.array()
+            });
+        }
+
         const { username, password } = req.body;
         console.log('Получен запрос на авторизацию:', { username });
 
@@ -506,7 +679,7 @@ app.get('/orderstatuses', async (req, res) => {
     }
 });
 
-app.post('/createOrder', authenticateToken, upload.array('files', 5), async (req, res) => {
+app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files', 5), async (req, res) => {
     try {
         console.log('Получен запрос на создание заказа:', req.body);
 
@@ -683,7 +856,7 @@ app.get('/orders', async (req, res) => {
 });
 
 // Эндпоинт для загрузки аватара
-app.post('/upload-avatar', authenticateToken, async (req, res) => {
+app.post('/upload-avatar', csrfProtection, authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на загрузку аватара');
     
@@ -804,7 +977,7 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
 });
 
 // Эндпоинт для обновления профиля пользователя
-app.put('/updateprofile', authenticateToken, async (req, res) => {
+app.put('/updateprofile', csrfProtection, authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
@@ -946,6 +1119,41 @@ app.put('/updateprofile', authenticateToken, async (req, res) => {
 // Добавляем обработку ошибок
 app.use((err, req, res, next) => {
     console.error('Ошибка сервера:', err);
+
+    // Обработка CSRF ошибок
+    if (err.code === 'EBADCSRFTOKEN') {
+        return res.status(403).json({
+            success: false,
+            message: 'Ошибка CSRF токена. Пожалуйста, обновите страницу и попробуйте снова.'
+        });
+    }
+
+    // Обработка ошибок валидации
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({
+            success: false,
+            message: 'Ошибка валидации',
+            errors: err.errors
+        });
+    }
+
+    // Обработка ошибок JWT
+    if (err.name === 'JsonWebTokenError') {
+        return res.status(401).json({
+            success: false,
+            message: 'Недействительный токен'
+        });
+    }
+
+    // Обработка ошибок истечения срока действия токена
+    if (err.name === 'TokenExpiredError') {
+        return res.status(401).json({
+            success: false,
+            message: 'Срок действия токена истек'
+        });
+    }
+
+    // Общая обработка ошибок
     res.status(500).json({
         success: false,
         message: 'Внутренняя ошибка сервера',
@@ -1033,7 +1241,7 @@ app.post('/services/:id/upload-image', upload.single('image'), async (req, res) 
 });
 
 // Обновление услуги
-app.put('/services/:id', upload.single('image'), async (req, res) => {
+app.put('/services/:id', csrfProtection, upload.single('image'), async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, is_dark_theme } = req.body;
@@ -1203,7 +1411,7 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
 });
 
 // Создание новой услуги
-app.post('/services', upload.single('image'), async (req, res) => {
+app.post('/services', csrfProtection, upload.single('image'), async (req, res) => {
     try {
         console.log('Получен запрос на создание услуги:', {
             body: req.body,
@@ -1340,7 +1548,7 @@ app.post('/services', upload.single('image'), async (req, res) => {
 });
 
 // Удаление услуги
-app.delete('/services/:id', async (req, res) => {
+app.delete('/services/:id', csrfProtection, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -2441,273 +2649,4 @@ app.post('/chats/:chatId/messages', (req, res) => {
             );
         }
     );
-});
-
-// Создать чат (например, при новом заказе)
-app.post('/chats', (req, res) => {
-    const { title, user_id, executor_id } = req.body;
-    if (!title || !user_id || !executor_id) return res.status(400).json({ error: 'title, user_id, executor_id обязательны' });
-    db.query(
-        'INSERT INTO chats (title, user_id, executor_id) VALUES (?, ?, ?)',
-        [title, user_id, executor_id],
-        (err, result) => {
-            if (err) {
-                console.error('Ошибка при создании чата:', err);
-                return res.status(500).json({ error: 'Ошибка при создании чата' });
-            }
-            db.query(
-                'SELECT * FROM chats WHERE id = ?',
-                [result.insertId],
-                (err, rows) => {
-                    if (err) return res.status(500).json({ error: 'Ошибка при получении чата' });
-                    res.json(rows[0]);
-                }
-            );
-        }
-    );
-});
-
-// Получить чаты пользователя (где он заказчик или исполнитель)
-app.get('/chats/user/:userId', async (req, res) => {
-    try {
-        const userId = req.params.userId;
-        console.log('Получение чатов для пользователя:', userId);
-
-        // Сначала получаем информацию о пользователе
-        const [user] = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM user WHERE id = ?', [userId], (err, results) => {
-                if (err) {
-                    console.error('Ошибка при получении пользователя:', err);
-                    reject(err);
-                } else {
-                    resolve(results);
-                }
-            });
-        });
-
-        if (!user) {
-            return res.status(404).json({ error: 'Пользователь не найден' });
-        }
-
-        // Получаем чаты, где пользователь является либо заказчиком, либо исполнителем
-        const query = `
-            SELECT c.*, 
-                   u.username as user_name,
-                   e.fullname as executor_name,
-                   o.project_name
-            FROM chats c
-            LEFT JOIN user u ON c.user_id = u.id
-            LEFT JOIN executors e ON c.executor_id = e.id
-            LEFT JOIN orders o ON c.id = o.chat_id
-            WHERE c.user_id = ? 
-               OR c.executor_id = (
-                   SELECT id 
-                   FROM executors 
-                   WHERE user_id = ?
-               )
-        `;
-
-        db.query(query, [userId, userId], async (err, results) => {
-            if (err) {
-                console.error('Ошибка при получении чатов:', err);
-                return res.status(500).json({ error: 'Ошибка при получении чатов' });
-            }
-            console.log('Найдены чаты:', results);
-
-            // --- ДОБАВЛЯЕМ unread_count ДЛЯ КАЖДОГО ЧАТА ---
-            const chatIds = results.map(chat => chat.id);
-            const unreadCounts = await Promise.all(chatIds.map(chatId => {
-                return new Promise((resolve) => {
-                    db.query(
-                        `SELECT COUNT(*) as unread_count
-                         FROM messages m
-                         WHERE m.chat_id = ? AND m.sender_id != ? 
-                         AND m.id NOT IN (
-                             SELECT message_id FROM message_reads WHERE user_id = ?
-                         )`,
-                        [chatId, userId, userId],
-                        (err, rows) => {
-                            if (err) return resolve({ chatId, unread_count: 0 });
-                            resolve({ chatId, unread_count: rows[0].unread_count });
-                        }
-                    );
-                });
-            }));
-
-            const chatsWithUnread = results.map(chat => {
-                const unread = unreadCounts.find(u => u.chatId === chat.id);
-                return { ...chat, unread_count: unread ? unread.unread_count : 0 };
-            });
-            res.json(chatsWithUnread);
-        });
-    } catch (error) {
-        console.error('Ошибка при обработке запроса чатов:', error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
-});
-
-// Обновление chat_id в заказе
-app.put('/orders/:orderId', authenticateToken, async (req, res) => {
-    try {
-        const orderId = req.params.orderId;
-        const { chat_id } = req.body;
-
-        if (!chat_id) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Не указан chat_id' 
-            });
-        }
-
-        // Обновляем chat_id в заказе
-        await new Promise((resolve, reject) => {
-            db.query(
-                'UPDATE orders SET chat_id = ? WHERE id = ?',
-                [chat_id, orderId],
-                (err, result) => {
-                    if (err) {
-                        console.error('Ошибка при обновлении chat_id:', err);
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                }
-            );
-        });
-
-        res.json({ 
-            success: true, 
-            message: 'chat_id успешно обновлен' 
-        });
-    } catch (error) {
-        console.error('Ошибка при обновлении chat_id:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Ошибка сервера при обновлении chat_id' 
-        });
-    }
-});
-
-// Создание связи между пользователем и исполнителем
-app.post('/executors/link', authenticateToken, async (req, res) => {
-    try {
-        const { user_id, fullname } = req.body;
-
-        if (!user_id || !fullname) {
-            return res.status(400).json({
-                success: false,
-                error: 'Необходимо указать user_id и fullname'
-            });
-        }
-
-        // Проверяем, существует ли уже связь
-        const [existingExecutor] = await new Promise((resolve, reject) => {
-            db.query(
-                'SELECT * FROM executors WHERE user_id = ?',
-                [user_id],
-                (err, results) => {
-                    if (err) reject(err);
-                    else resolve(results);
-                }
-            );
-        });
-
-        if (existingExecutor) {
-            return res.status(400).json({
-                success: false,
-                error: 'Этот пользователь уже является исполнителем'
-            });
-        }
-
-        // Создаем запись исполнителя
-        const result = await new Promise((resolve, reject) => {
-            db.query(
-                'INSERT INTO executors (user_id, fullname) VALUES (?, ?)',
-                [user_id, fullname],
-                (err, result) => {
-                    if (err) reject(err);
-                    else resolve(result);
-                }
-            );
-        });
-
-        res.json({
-            success: true,
-            message: 'Пользователь успешно назначен исполнителем',
-            executor_id: result.insertId
-        });
-    } catch (error) {
-        console.error('Ошибка при создании связи исполнителя:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка сервера при создании связи исполнителя'
-        });
-    }
-});
-
-// Удаление чата и всех связанных сообщений
-app.delete('/chats/:chatId', async (req, res) => {
-    const chatId = req.params.chatId;
-    try {
-        // Удаляем все сообщения этого чата
-        await new Promise((resolve, reject) => {
-            db.query('DELETE FROM messages WHERE chat_id = ?', [chatId], (err) => {
-                if (err) return reject(err);
-                resolve();
-            });
-        });
-        // Обнуляем chat_id в заказах, связанных с этим чатом
-        await new Promise((resolve, reject) => {
-            db.query('UPDATE orders SET chat_id = NULL WHERE chat_id = ?', [chatId], (err) => {
-                if (err) return reject(err);
-                resolve();
-            });
-        });
-        // Удаляем сам чат
-        await new Promise((resolve, reject) => {
-            db.query('DELETE FROM chats WHERE id = ?', [chatId], (err) => {
-                if (err) return reject(err);
-                resolve();
-            });
-        });
-        res.json({ success: true, message: 'Чат и все сообщения удалены' });
-    } catch (error) {
-        console.error('Ошибка при удалении чата:', error);
-        res.status(500).json({ success: false, error: 'Ошибка при удалении чата' });
-    }
-});
-
-// --- ОТМЕТКА СООБЩЕНИЙ КАК ПРОЧИТАННЫХ ---
-app.post('/chats/:chatId/read', authenticateToken, async (req, res) => {
-    const chatId = req.params.chatId;
-    const userId = req.user.id;
-
-    // Получаем id всех сообщений, которые пользователь ещё не читал (и не свои)
-    db.query(
-        `SELECT id FROM messages 
-         WHERE chat_id = ? AND sender_id != ? 
-         AND id NOT IN (SELECT message_id FROM message_reads WHERE user_id = ?)`,
-        [chatId, userId, userId],
-        (err, rows) => {
-            if (err) return res.status(500).json({ error: 'Ошибка при поиске сообщений' });
-            if (!rows.length) return res.json({ success: true, updated: 0 });
-
-            // Формируем массив для вставки
-            const values = rows.map(row => [row.id, userId]);
-            db.query(
-                'INSERT IGNORE INTO message_reads (message_id, user_id) VALUES ?',
-                [values],
-                (err2, result) => {
-                    if (err2) return res.status(500).json({ error: 'Ошибка при отметке сообщений как прочитанных' });
-                    res.json({ success: true, updated: result.affectedRows });
-                }
-            );
-        }
-    );
-});
-
-const PORT = process.env.PORT || 3001;
-
-app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
 });
