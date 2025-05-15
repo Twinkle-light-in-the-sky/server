@@ -87,10 +87,6 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json({ limit: '32mb' }));
-app.use(bodyParser.json({ limit: '32mb' }));
-app.use(express.urlencoded({ extended: true, limit: '32mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '32mb' }));
 // Serve static files from the React app
 //app.use(express.static(path.join(__dirname, './client/build')));
 
@@ -140,7 +136,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-app.post('/regpage', async (req, res) => {
+app.post('/regpage', express.json({ limit: '32mb' }), bodyParser.json({ limit: '32mb' }), express.urlencoded({ extended: true, limit: '32mb' }), bodyParser.urlencoded({ extended: true, limit: '32mb' }), async (req, res) => {
     try {
         console.log('Получен запрос на регистрацию:', req.body);
         
@@ -284,7 +280,7 @@ app.post('/regpage', async (req, res) => {
     }
 });
 
-app.post('/logpage', async (req, res) => {
+app.post('/logpage', express.json({ limit: '32mb' }), bodyParser.json({ limit: '32mb' }), express.urlencoded({ extended: true, limit: '32mb' }), bodyParser.urlencoded({ extended: true, limit: '32mb' }), async (req, res) => {
     try {
         const { username, password } = req.body;
         console.log('Получен запрос на авторизацию:', { username });
@@ -850,7 +846,7 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
 });
 
 // Эндпоинт для обновления профиля пользователя
-app.put('/updateprofile', authenticateToken, async (req, res) => {
+app.put('/updateprofile', express.json({ limit: '32mb' }), bodyParser.json({ limit: '32mb' }), express.urlencoded({ extended: true, limit: '32mb' }), bodyParser.urlencoded({ extended: true, limit: '32mb' }), async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
