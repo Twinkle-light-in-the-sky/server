@@ -21,6 +21,9 @@ const hpp = require('hpp');
 // Загружаем переменные окружения
 require('dotenv').config();
 
+// Инициализация приложения
+const app = express();
+
 // Настройка сессий
 app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key',
@@ -181,8 +184,6 @@ const corsOptions = {
     credentials: true,
     maxAge: 86400
 };
-
-const app = express();
 
 // Добавляем middleware для логирования CORS
 app.use((req, res, next) => {
@@ -2650,3 +2651,24 @@ app.post('/chats/:chatId/messages', (req, res) => {
         }
     );
 });
+
+// Обработчик CSP violations
+app.post('/report-violation', (req, res) => {
+    if (req.body) {
+        console.log('CSP Violation:', req.body);
+    } else {
+        console.log('CSP Violation: No data received');
+    }
+    res.status(204).end();
+});
+
+// Настройка CORS с улучшенной конфигурацией
+app.use(cors({
+    origin: process.env.NODE_ENV === 'production' 
+        ? ['https://your-production-domain.com'] 
+        : ['http://localhost:3000'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    credentials: true,
+    maxAge: 86400
+}));
