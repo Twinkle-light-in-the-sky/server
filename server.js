@@ -376,14 +376,12 @@ app.get('/service', async (req, res) => {
 app.get('/projects', async (req, res) => {
     try {
         console.log('Получен запрос на получение проектов');
-        
         const projects = await new Promise((resolve, reject) => {
             db.query('SELECT id, projects_title, projects_description, projects_background, is_dark_theme, link, block_size FROM projects ORDER BY id ASC', (err, results) => {
-            if (err) {
+                if (err) {
                     console.error('Ошибка при получении проектов:', err);
                     reject(err);
                 } else {
-                    // Преобразуем is_dark_theme из числа (0/1) в boolean
                     const formattedResults = results.map(project => ({
                         ...project,
                         is_dark_theme: Boolean(project.is_dark_theme)
@@ -392,12 +390,23 @@ app.get('/projects', async (req, res) => {
                 }
             });
         });
-
         console.log('Найдено проектов:', projects.length);
-        
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        // CORS fix
+        const origin = req.headers.origin;
+        const allowedOrigins = [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'https://barsikec.beget.tech',
+            'http://barsikec.beget.tech',
+            'https://startset-app.vercel.app',
+            'https://server-9va8.onrender.com'
+        ];
+        if (origin && allowedOrigins.includes(origin)) {
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', 'true');
+        }
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.json({
             success: true,
             data: projects
@@ -419,9 +428,22 @@ app.get('/benefits', async (req, res) => {
                 console.error("Ошибка при получении данных преимуществ:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            // CORS fix
+            const origin = req.headers.origin;
+            const allowedOrigins = [
+                'http://localhost:3000',
+                'http://localhost:3001',
+                'https://barsikec.beget.tech',
+                'http://barsikec.beget.tech',
+                'https://startset-app.vercel.app',
+                'https://server-9va8.onrender.com'
+            ];
+            if (origin && allowedOrigins.includes(origin)) {
+                res.header('Access-Control-Allow-Origin', origin);
+                res.header('Access-Control-Allow-Credentials', 'true');
+            }
+            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
@@ -636,9 +658,22 @@ app.get('/executors', async (req, res) => {
     try {
         console.log('Вызов getAllExecutors');
         const executors = await getAllExecutors();
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        // CORS fix
+        const origin = req.headers.origin;
+        const allowedOrigins = [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'https://barsikec.beget.tech',
+            'http://barsikec.beget.tech',
+            'https://startset-app.vercel.app',
+            'https://server-9va8.onrender.com'
+        ];
+        if (origin && allowedOrigins.includes(origin)) {
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', 'true');
+        }
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.json(executors);
     } catch (error) {
         console.error("Ошибка при получении исполнителей:", error);
@@ -650,7 +685,6 @@ app.get('/orders', async (req, res) => {
     try {
         const userId = req.query.userId;
         console.log("Получен запрос заказов для пользователя:", userId);
-
         const getOrdersQuery = `
             SELECT o.*, 
                    s.title as service_name,
@@ -664,16 +698,28 @@ app.get('/orders', async (req, res) => {
             LEFT JOIN user u ON o.user_id = u.id
             WHERE o.user_id = ?
         `;
-        
         db.query(getOrdersQuery, [userId], (err, results) => {
             if (err) {
                 console.error("Ошибка при получении заказов:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
             console.log("Полученные заказы для пользователя:", userId, results);
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            // CORS fix
+            const origin = req.headers.origin;
+            const allowedOrigins = [
+                'http://localhost:3000',
+                'http://localhost:3001',
+                'https://barsikec.beget.tech',
+                'http://barsikec.beget.tech',
+                'https://startset-app.vercel.app',
+                'https://server-9va8.onrender.com'
+            ];
+            if (origin && allowedOrigins.includes(origin)) {
+                res.header('Access-Control-Allow-Origin', origin);
+                res.header('Access-Control-Allow-Credentials', 'true');
+            }
+            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
