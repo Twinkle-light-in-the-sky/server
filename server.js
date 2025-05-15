@@ -8,169 +8,50 @@ const path = require('path');
 const multer = require('multer');
 const https = require('https');
 const fs = require('fs');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const { body, validationResult } = require('express-validator');
-const csrf = require('csurf');
-const cookieParser = require('cookie-parser');
-const session = require('express-session');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-const hpp = require('hpp');
 
 // Загружаем переменные окружения
 require('dotenv').config();
 
-// Инициализация приложения
-const app = express();
+// Проверяем наличие необходимых переменных окружения
+console.log('Проверка переменных окружения:');
+console.log('IMGBB_API_KEY:', process.env.IMGBB_API_KEY || 'Отсутствует');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Присутствует' : 'Отсутствует');
+console.log('DB_HOST:', process.env.DB_HOST ? 'Присутствует' : 'Отсутствует');
 
-// Настройка сессий
-const sessionConfig = {
-    secret: process.env.SESSION_SECRET || 'your-secret-key',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, // 24 часа
-        sameSite: 'lax'
-    }
-};
-
-if (process.env.NODE_ENV === 'production') {
-    // В production используем MemoryStore, но с предупреждением
-    console.warn('Warning: Using MemoryStore in production. Consider using a proper session store like Redis or MongoDB.');
-} else {
-    // В development используем MemoryStore
-    sessionConfig.store = new session.MemoryStore();
+// Устанавливаем значение IMGBB_API_KEY напрямую, если оно отсутствует в .env
+if (!process.env.IMGBB_API_KEY) {
+  process.env.IMGBB_API_KEY = '194fcc07333e5f7b8036a78bb24a89b0';
+  console.log('IMGBB_API_KEY установлен напрямую');
 }
 
-app.use(session(sessionConfig));
-
-// Парсинг куки
-app.use(cookieParser());
-
-// Защита от NoSQL инъекций
-app.use(mongoSanitize());
-
-// Защита от XSS атак
-app.use(xss());
-
-// Защита от HTTP Parameter Pollution
-app.use(hpp());
-
-// Настройка базовых заголовков безопасности
-app.use(helmet());
-
-// Настройка CSP с улучшенной конфигурацией
-app.use(helmet.contentSecurityPolicy({
-    directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:", "blob:"],
-        connectSrc: ["'self'", "https://api.imgbb.com"],
-        fontSrc: ["'self'", "https:", "data:"],
-        objectSrc: ["'none'"],
-        mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
-        sandbox: ['allow-forms', 'allow-scripts', 'allow-same-origin'],
-        reportUri: '/report-violation',
-        workerSrc: ["'self'"],
-        manifestSrc: ["'self'"],
-        prefetchSrc: ["'self'"]
-    },
-    reportOnly: false
-}));
-
-// Улучшенная настройка rate limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 минут
-    max: 100, // лимит запросов
-    message: 'Слишком много запросов с этого IP, пожалуйста, попробуйте позже',
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: false,
-    keyGenerator: (req) => {
-        return req.ip;
-    },
-    handler: (req, res) => {
-        res.status(429).json({
-            success: false,
-            message: 'Слишком много запросов, пожалуйста, попробуйте позже'
-        });
+// Настройка multer для обработки файлов
+const storage = multer.memoryStorage();
+const fileFilter = (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+    } else {
+        cb(new Error('Неверный тип файла. Разрешены только изображения.'), false);
     }
-});
-
-// Специальный лимитер для авторизации с улучшенной конфигурацией
-const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 5,
-    message: 'Слишком много попыток входа, попробуйте позже',
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: false,
-    keyGenerator: (req) => {
-        return req.ip;
-    },
-    handler: (req, res) => {
-        res.status(429).json({
-            success: false,
-            message: 'Слишком много попыток входа, пожалуйста, попробуйте позже'
-        });
-    }
-});
-
-// Настройка CSRF защиты
-const csrfProtection = csrf({
-    cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 3600 // 1 час
-    }
-});
-
-// Настройка CORS с улучшенной конфигурацией
-const corsOptions = {
-    origin: function(origin, callback) {
-        const allowedOrigins = [
-            'http://localhost:3000', 
-            'http://localhost:3001', 
-            'https://barsikec.beget.tech', 
-            'http://barsikec.beget.tech', 
-            'https://startset-app.vercel.app', 
-            'https://server-9va8.onrender.com',
-            'http://server-9va8.onrender.com'
-        ];
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'X-CSRF-Token'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    credentials: true,
-    maxAge: 86400,
-    preflightContinue: false,
-    optionsSuccessStatus: 204
 };
 
-// Применяем CORS middleware
-app.use(cors(corsOptions));
-
-// Применяем CSRF защиту ко всем маршрутам, кроме /csrf-token, /logpage, /regpage
-app.use((req, res, next) => {
-    // CSRF не нужен для логина, регистрации и получения токена
-    const csrfExcluded = ['/csrf-token', '/logpage', '/regpage'];
-    if (csrfExcluded.includes(req.path)) {
-        next();
-    } else {
-        csrfProtection(req, res, next);
+const upload = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: {
+        fileSize: 32 * 1024 * 1024 // 32MB
     }
 });
+
+const corsOptions = {
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    credentials: true,
+    maxAge: 86400
+};
+
+const app = express();
 
 // Добавляем middleware для логирования CORS
 app.use((req, res, next) => {
@@ -183,8 +64,28 @@ app.use((req, res, next) => {
     next();
 });
 
+app.use(cors(corsOptions));
+
 // Обработка preflight запросов
 app.options('*', cors(corsOptions));
+
+// Добавляем middleware для всех запросов
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+    }
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+    res.header('Access-Control-Max-Age', '86400');
+    
+    if (req.method === 'OPTIONS') {
+        console.log('Handling OPTIONS request');
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 app.use(express.json({ limit: '32mb' }));
 app.use(bodyParser.json({ limit: '32mb' }));
@@ -208,16 +109,6 @@ const servicesBgPath = path.join(__dirname, 'uploads', 'services-bg');
 app.use('/uploads/services-bg', express.static(servicesBgPath));
 const projectsBgPath = path.join(__dirname, 'uploads', 'projects-bg');
 app.use('/uploads/projects-bg', express.static(projectsBgPath));
-
-// Настройка multer для загрузки файлов
-const storage = multer.memoryStorage();
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 32 * 1024 * 1024, // 32MB
-        files: 5
-    }
-});
 
 // Middleware для проверки JWT токена
 const authenticateToken = (req, res, next) => {
@@ -249,41 +140,8 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Валидация для регистрации
-const registerValidation = [
-    body('username')
-        .trim()
-        .isLength({ min: 3 })
-        .withMessage('Имя пользователя должно быть не менее 3 символов')
-        .escape(),
-    body('email')
-        .isEmail()
-        .withMessage('Введите корректный email')
-        .normalizeEmail(),
-    body('password')
-        .isLength({ min: 8 })
-        .withMessage('Пароль должен быть не менее 8 символов')
-        .matches(/\d/)
-        .withMessage('Пароль должен содержать хотя бы одну цифру')
-];
-
-// Валидация для входа
-const loginValidation = [
-    body('username').trim().escape(),
-    body('password').trim()
-];
-
-app.post('/regpage', registerValidation, async (req, res) => {
+app.post('/regpage', async (req, res) => {
     try {
-        // Проверка результатов валидации
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
-        }
-
         console.log('Получен запрос на регистрацию:', req.body);
         
         // Проверяем обязательные поля
@@ -426,17 +284,8 @@ app.post('/regpage', registerValidation, async (req, res) => {
     }
 });
 
-app.post('/logpage', loginLimiter, loginValidation, async (req, res) => {
+app.post('/logpage', async (req, res) => {
     try {
-        // Проверка результатов валидации
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
-        }
-
         const { username, password } = req.body;
         console.log('Получен запрос на авторизацию:', { username });
 
@@ -570,13 +419,9 @@ app.get('/benefits', async (req, res) => {
                 console.error("Ошибка при получении данных преимуществ:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            const origin = req.headers.origin;
-            if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-                res.header('Access-Control-Allow-Origin', origin);
-                res.header('Access-Control-Allow-Credentials', 'true');
-            }
-            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
@@ -661,7 +506,7 @@ app.get('/orderstatuses', async (req, res) => {
     }
 });
 
-app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files', 5), async (req, res) => {
+app.post('/createOrder', authenticateToken, upload.array('files', 5), async (req, res) => {
     try {
         console.log('Получен запрос на создание заказа:', req.body);
 
@@ -716,15 +561,6 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
             });
         }
 
-        // Устанавливаем значения по умолчанию для nullable полей
-        const defaultSiteType = site_type || 'multipage';
-        const defaultBlocksCount = blocks_count || 0;
-        const defaultAdditionalInfo = additional_info || '';
-        const defaultNeedReceipt = need_receipt ? 1 : 0;
-
-        // Получаем цену шаблона
-        const templatePrice = template.price || 0;
-
         // Создаем заказ
         const insertQuery = `
             INSERT INTO orders (
@@ -739,11 +575,11 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
             user_id,
             service_id,
             template_id,
-            defaultSiteType,
-            defaultBlocksCount,
-            templatePrice, // <-- теперь из базы
-            defaultAdditionalInfo,
-            defaultNeedReceipt,
+            site_type,
+            blocks_count,
+            price,
+            additional_info,
+            need_receipt ? 1 : 0,
             status_id,
             executor_id,
             order_date
@@ -779,15 +615,6 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
             });
         });
 
-        // Настройка CORS заголовков
-        const origin = req.headers.origin;
-        if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-            res.header('Access-Control-Allow-Origin', origin);
-            res.header('Access-Control-Allow-Credentials', 'true');
-        }
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
-
         res.json({
             success: true,
             orderId: result.insertId,
@@ -798,23 +625,20 @@ app.post('/createOrder', csrfProtection, authenticateToken, upload.array('files'
         res.status(500).json({ 
             success: false,
             message: 'Внутренняя ошибка сервера',
-            error: error.message,
-            stack: error.stack
+            error: error.message, // Показываем текст ошибки
+            stack: error.stack    // (по желанию) Показываем стек вызова
         });
     }
 });
+
 
 app.get('/executors', async (req, res) => {
     try {
         console.log('Вызов getAllExecutors');
         const executors = await getAllExecutors();
-        const origin = req.headers.origin;
-        if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-            res.header('Access-Control-Allow-Origin', origin);
-            res.header('Access-Control-Allow-Credentials', 'true');
-        }
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.json(executors);
     } catch (error) {
         console.error("Ошибка при получении исполнителей:", error);
@@ -847,16 +671,9 @@ app.get('/orders', async (req, res) => {
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
             console.log("Полученные заказы для пользователя:", userId, results);
-            
-            // Настройка CORS заголовков
-            const origin = req.headers.origin;
-            if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-                res.header('Access-Control-Allow-Origin', origin);
-                res.header('Access-Control-Allow-Credentials', 'true');
-            }
-            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-CSRF-Token');
-            
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
@@ -866,7 +683,7 @@ app.get('/orders', async (req, res) => {
 });
 
 // Эндпоинт для загрузки аватара
-app.post('/upload-avatar', csrfProtection, authenticateToken, async (req, res) => {
+app.post('/upload-avatar', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на загрузку аватара');
     
@@ -987,7 +804,7 @@ app.post('/upload-avatar', csrfProtection, authenticateToken, async (req, res) =
 });
 
 // Эндпоинт для обновления профиля пользователя
-app.put('/updateprofile', csrfProtection, authenticateToken, async (req, res) => {
+app.put('/updateprofile', authenticateToken, async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
@@ -1129,41 +946,6 @@ app.put('/updateprofile', csrfProtection, authenticateToken, async (req, res) =>
 // Добавляем обработку ошибок
 app.use((err, req, res, next) => {
     console.error('Ошибка сервера:', err);
-
-    // Обработка CSRF ошибок
-    if (err.code === 'EBADCSRFTOKEN') {
-        return res.status(403).json({
-            success: false,
-            message: 'Ошибка CSRF токена. Пожалуйста, обновите страницу и попробуйте снова.'
-        });
-    }
-
-    // Обработка ошибок валидации
-    if (err.name === 'ValidationError') {
-        return res.status(400).json({
-            success: false,
-            message: 'Ошибка валидации',
-            errors: err.errors
-        });
-    }
-
-    // Обработка ошибок JWT
-    if (err.name === 'JsonWebTokenError') {
-        return res.status(401).json({
-            success: false,
-            message: 'Недействительный токен'
-        });
-    }
-
-    // Обработка ошибок истечения срока действия токена
-    if (err.name === 'TokenExpiredError') {
-        return res.status(401).json({
-            success: false,
-            message: 'Срок действия токена истек'
-        });
-    }
-
-    // Общая обработка ошибок
     res.status(500).json({
         success: false,
         message: 'Внутренняя ошибка сервера',
@@ -1251,7 +1033,7 @@ app.post('/services/:id/upload-image', upload.single('image'), async (req, res) 
 });
 
 // Обновление услуги
-app.put('/services/:id', csrfProtection, upload.single('image'), async (req, res) => {
+app.put('/services/:id', upload.single('image'), async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, is_dark_theme } = req.body;
@@ -1331,7 +1113,7 @@ app.put('/services/:id', csrfProtection, upload.single('image'), async (req, res
                 console.error('Ошибка при обработке изображения:', error);
                 return res.status(500).json({ 
                     success: false,
-                    error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
+                    error: 'Ошибка при загрузке изображения'
                 });
             }
         }
@@ -1421,7 +1203,7 @@ app.put('/services/:id', csrfProtection, upload.single('image'), async (req, res
 });
 
 // Создание новой услуги
-app.post('/services', csrfProtection, upload.single('image'), async (req, res) => {
+app.post('/services', upload.single('image'), async (req, res) => {
     try {
         console.log('Получен запрос на создание услуги:', {
             body: req.body,
@@ -1558,7 +1340,7 @@ app.post('/services', csrfProtection, upload.single('image'), async (req, res) =
 });
 
 // Удаление услуги
-app.delete('/services/:id', csrfProtection, async (req, res) => {
+app.delete('/services/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -2082,7 +1864,7 @@ app.get('/site-orders', async (req, res) => {
             SELECT o.*, 
                 s.title as service_title,
                 e.fullname as executor_name,
-                os.status_name,
+                os.status_name as status,
                 u.username as customer_name
             FROM orders o
             LEFT JOIN services s ON o.service_id = s.id
@@ -2244,48 +2026,28 @@ app.get('/templates', (req, res) => {
 
 // Получение цен на услуги
 app.get('/service_pricing', (req, res) => {
-    const { service_id } = req.query;
-    let query = 'SELECT * FROM service_pricing WHERE is_active = 1';
-    const params = [];
-    if (service_id) {
-        query += ' AND service_id = ?';
-        params.push(service_id);
-    }
-    db.query(query, params, (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
+    const query = `
+        SELECT 
+            service_type,
+            base_price,
+            price_per_block,
+            min_blocks,
+            max_blocks
+        FROM service_pricing
+        WHERE is_active = 1
+    `;
+
+    db.query(query, (err, results) => {
+        if (err) {
+            console.error('Ошибка при получении цен:', err);
+            return res.status(500).json({ error: 'Ошибка при получении цен' });
+        }
+        res.json({ data: results });
     });
 });
 
-// Получение доп. услуг
-app.get('/service_addons', (req, res) => {
-    const { service_id } = req.query;
-    let query = 'SELECT * FROM service_addons WHERE is_active = 1';
-    const params = [];
-    if (service_id) {
-        query += ' AND service_id = ?';
-        params.push(service_id);
-    }
-    db.query(query, params, (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
-    });
-});
 
-// Получение шаблонов
-app.get('/templates', (req, res) => {
-    const { service_id } = req.query;
-    let query = 'SELECT * FROM templates';
-    const params = [];
-    if (service_id) {
-        query += ' WHERE service_id = ?';
-        params.push(service_id);
-    }
-    db.query(query, params, (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
-    });
-});
+
 
 // Создание заказа с дополнительными услугами
 app.post('/orders', (req, res) => {
@@ -2302,44 +2064,20 @@ app.post('/orders', (req, res) => {
         selected_addons 
     } = req.body;
 
-    // Получаем цену шаблона по имени
-    const getTemplatePriceQuery = 'SELECT price FROM templates WHERE name = ? LIMIT 1';
-    db.query(getTemplatePriceQuery, [template_name], (err, templateResults) => {
+    // Проверяем существование пользователя
+    const checkUserQuery = 'SELECT id FROM user WHERE id = ?';
+    db.query(checkUserQuery, [user_id], (err, results) => {
         if (err) {
-            console.error('Ошибка при получении цены шаблона:', err);
-            return res.status(500).json({ error: 'Ошибка при получении цены шаблона' });
+            console.error('Ошибка при проверке пользователя:', err);
+            return res.status(500).json({ error: 'Ошибка сервера' });
         }
-        const templatePrice = templateResults && templateResults.length > 0 ? templateResults[0].price : 0;
+        
+        if (results.length === 0) {
+            return res.status(400).json({ error: 'Пользователь не найден' });
+        }
 
-        // Проверяем существование пользователя
-        const checkUserQuery = 'SELECT id FROM user WHERE id = ?';
-        db.query(checkUserQuery, [user_id], (err, results) => {
-            if (err) {
-                console.error('Ошибка при проверке пользователя:', err);
-                return res.status(500).json({ error: 'Ошибка сервера' });
-            }
-            
-            if (results.length === 0) {
-                return res.status(400).json({ error: 'Пользователь не найден' });
-            }
-
-            const orderQuery = `
-                INSERT INTO orders (
-                    project_name, 
-                    site_type, 
-                    blocks_count, 
-                    template_name, 
-                    service_id, 
-                    user_id, 
-                    additional_info, 
-                    need_receipt, 
-                    price, 
-                    order_date, 
-                    status_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1)
-            `;
-
-            const orderValues = [
+        const orderQuery = `
+            INSERT INTO orders (
                 project_name, 
                 site_type, 
                 blocks_count, 
@@ -2348,45 +2086,59 @@ app.post('/orders', (req, res) => {
                 user_id, 
                 additional_info, 
                 need_receipt, 
-                templatePrice // <-- теперь из базы
-            ];
+                price, 
+                order_date, 
+                status_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 1)
+        `;
 
-            db.query(orderQuery, orderValues, (err, result) => {
-                if (err) {
-                    console.error('Ошибка при создании заказа:', err);
-                    return res.status(500).json({ error: 'Ошибка сервера' });
-                }
+        const orderValues = [
+            project_name, 
+            site_type, 
+            blocks_count, 
+            template_name, 
+            service_id, 
+            user_id, 
+            additional_info, 
+            need_receipt, 
+            price
+        ];
 
-                const orderId = result.insertId;
+        db.query(orderQuery, orderValues, (err, result) => {
+            if (err) {
+                console.error('Ошибка при создании заказа:', err);
+                return res.status(500).json({ error: 'Ошибка сервера' });
+            }
 
-                // Если есть выбранные доп. услуги, добавляем их
-                if (selected_addons && selected_addons.length > 0) {
-                    const addonQuery = `
-                        INSERT INTO order_addons (order_id, addon_id, price_at_time) 
-                        SELECT ?, id, price 
-                        FROM service_addons 
-                        WHERE id IN (?)
-                    `;
+            const orderId = result.insertId;
 
-                    db.query(addonQuery, [orderId, selected_addons], (err, result) => {
-                        if (err) {
-                            console.error('Ошибка при добавлении дополнительных услуг:', err);
-                            return res.status(500).json({ error: 'Ошибка при добавлении дополнительных услуг' });
-                        }
-                        res.json({
-                            success: true,
-                            orderId: orderId,
-                            message: 'Заказ успешно создан с дополнительными услугами'
-                        });
-                    });
-                } else {
+            // Если есть выбранные доп. услуги, добавляем их
+            if (selected_addons && selected_addons.length > 0) {
+                const addonQuery = `
+                    INSERT INTO order_addons (order_id, addon_id, price_at_time) 
+                    SELECT ?, id, price 
+                    FROM service_addons 
+                    WHERE id IN (?)
+                `;
+
+                db.query(addonQuery, [orderId, selected_addons], (err, result) => {
+                    if (err) {
+                        console.error('Ошибка при добавлении дополнительных услуг:', err);
+                        return res.status(500).json({ error: 'Ошибка при добавлении дополнительных услуг' });
+                    }
                     res.json({
                         success: true,
                         orderId: orderId,
-                        message: 'Заказ успешно создан'
+                        message: 'Заказ успешно создан с дополнительными услугами'
                     });
-                }
-            });
+                });
+            } else {
+                res.json({
+                    success: true,
+                    orderId: orderId,
+                    message: 'Заказ успешно создан'
+                });
+            }
         });
     });
 });
@@ -2590,10 +2342,15 @@ app.post('/orders/:orderId/upload-overlay', authenticateToken, upload.single('im
         }
         const orderId = req.params.orderId;
         if (!req.file) {
+            console.log('Файл не был получен!');
             return res.status(400).json({ success: false, message: 'Файл не загружен' });
         }
-
-        // Пример: загрузка на ImgBB
+        // Безопасный вывод информации о файле
+        console.log('Файл получен:', {
+            originalname: req.file.originalname,
+            size: req.file.size,
+            mimetype: req.file.mimetype
+        });
         const base64Image = req.file.buffer.toString('base64');
         const postData = new URLSearchParams();
         postData.append('image', base64Image);
@@ -2690,6 +2447,7 @@ app.post('/chats/:chatId/messages', (req, res) => {
         }
     );
 });
+
 // Создать чат (например, при новом заказе)
 app.post('/chats', (req, res) => {
     const { title, user_id, executor_id } = req.body;
@@ -2714,14 +2472,83 @@ app.post('/chats', (req, res) => {
     );
 });
 
-// Обработчик CSP violations
-app.post('/report-violation', (req, res) => {
-    if (req.body) {
-        console.log('CSP Violation:', req.body);
-    } else {
-        console.log('CSP Violation: No data received');
+// Получить чаты пользователя (где он заказчик или исполнитель)
+app.get('/chats/user/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        console.log('Получение чатов для пользователя:', userId);
+
+        // Сначала получаем информацию о пользователе
+        const [user] = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM user WHERE id = ?', [userId], (err, results) => {
+                if (err) {
+                    console.error('Ошибка при получении пользователя:', err);
+                    reject(err);
+                } else {
+                    resolve(results);
+                }
+            });
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+
+        // Получаем чаты, где пользователь является либо заказчиком, либо исполнителем
+        const query = `
+            SELECT c.*, 
+                   u.username as user_name,
+                   e.fullname as executor_name,
+                   o.project_name
+            FROM chats c
+            LEFT JOIN user u ON c.user_id = u.id
+            LEFT JOIN executors e ON c.executor_id = e.id
+            LEFT JOIN orders o ON c.id = o.chat_id
+            WHERE c.user_id = ? 
+               OR c.executor_id = (
+                   SELECT id 
+                   FROM executors 
+                   WHERE user_id = ?
+               )
+        `;
+
+        db.query(query, [userId, userId], async (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении чатов:', err);
+                return res.status(500).json({ error: 'Ошибка при получении чатов' });
+            }
+            console.log('Найдены чаты:', results);
+
+            // --- ДОБАВЛЯЕМ unread_count ДЛЯ КАЖДОГО ЧАТА ---
+            const chatIds = results.map(chat => chat.id);
+            const unreadCounts = await Promise.all(chatIds.map(chatId => {
+                return new Promise((resolve) => {
+                    db.query(
+                        `SELECT COUNT(*) as unread_count
+                         FROM messages m
+                         WHERE m.chat_id = ? AND m.sender_id != ? 
+                         AND m.id NOT IN (
+                             SELECT message_id FROM message_reads WHERE user_id = ?
+                         )`,
+                        [chatId, userId, userId],
+                        (err, rows) => {
+                            if (err) return resolve({ chatId, unread_count: 0 });
+                            resolve({ chatId, unread_count: rows[0].unread_count });
+                        }
+                    );
+                });
+            }));
+
+            const chatsWithUnread = results.map(chat => {
+                const unread = unreadCounts.find(u => u.chatId === chat.id);
+                return { ...chat, unread_count: unread ? unread.unread_count : 0 };
+            });
+            res.json(chatsWithUnread);
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса чатов:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
-    res.status(204).end();
 });
 
 // Обновление chat_id в заказе
@@ -2889,68 +2716,3 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
-
-// Получить чаты пользователя (где он заказчик или исполнитель)
-app.get('/chats/user/:userId', async (req, res) => {
-    try {
-        const userId = req.params.userId;
-        console.log('Получение чатов для пользователя:', userId);
-
-        // Проверяем, существует ли пользователь
-        const [user] = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM user WHERE id = ?', [userId], (err, results) => {
-                if (err) return reject(err);
-                resolve(results);
-            });
-        });
-
-        if (!user) {
-            return res.status(404).json({ error: 'Пользователь не найден' });
-        }
-
-        // Получаем чаты, где пользователь — заказчик или исполнитель
-        const chats = await new Promise((resolve, reject) => {
-            db.query(
-                'SELECT * FROM chats WHERE user_id = ? OR executor_id = ?',
-                [userId, userId],
-                (err, results) => {
-                    if (err) return reject(err);
-                    resolve(results);
-                }
-            );
-        });
-
-        // Получаем количество непрочитанных сообщений для каждого чата
-        const unreadCounts = await new Promise((resolve, reject) => {
-            db.query(
-                `SELECT chat_id AS chatId, COUNT(*) AS unread_count
-                 FROM messages
-                 WHERE chat_id IN (SELECT id FROM chats WHERE user_id = ? OR executor_id = ?)
-                 AND id NOT IN (SELECT message_id FROM message_reads WHERE user_id = ?)
-                 GROUP BY chat_id`,
-                [userId, userId, userId],
-                (err, results) => {
-                    if (err) return reject(err);
-                    resolve(results);
-                }
-            );
-        });
-
-        const chatsWithUnread = chats.map(chat => {
-            const unread = unreadCounts.find(u => u.chatId === chat.id);
-            return { ...chat, unread_count: unread ? unread.unread_count : 0 };
-        });
-
-        res.json(chatsWithUnread);
-    } catch (error) {
-        console.error('Ошибка при обработке запроса чатов:', error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
-});
-
-// Эндпоинт для получения CSRF токена
-app.get('/csrf-token', csrfProtection, (req, res) => {
-    res.json({ csrfToken: req.csrfToken() });
-});
-
-
