@@ -2286,13 +2286,23 @@ app.delete('/orders/:orderId', authenticateToken, (req, res) => {
 app.put('/orders/:orderId/cancel', authenticateToken, (req, res) => {
     const orderId = req.params.orderId;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
-    console.log(`Попытка отмены заказа ${orderId} пользователем ${userId}`);
+    console.log('DEBUG ОТМЕНА ЗАКАЗА:', { orderId, userId, userRole });
 
-    // Проверяем существование заказа и принадлежность пользователю
+    // Если админ — ищем только по id, если обычный — по id и user_id
+    const query = userRole === 'admin'
+        ? 'SELECT * FROM orders WHERE id = ?'
+        : 'SELECT * FROM orders WHERE id = ? AND user_id = ?';
+    const params = userRole === 'admin'
+        ? [orderId]
+        : [orderId, userId];
+
+    console.log('DEBUG SQL:', { query, params });
+
     db.query(
-        'SELECT * FROM orders WHERE id = ? AND user_id = ?',
-        [orderId, userId],
+        query,
+        params,
         (err, rows) => {
             if (err) {
                 console.error('Ошибка при проверке заказа:', err);
