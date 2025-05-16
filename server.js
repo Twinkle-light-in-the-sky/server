@@ -2344,7 +2344,7 @@ app.put('/orders/:orderId/cancel', authenticateToken, (req, res) => {
     );
 });
 
-app.put('/orders/:orderId/status', authenticateToken, async (req, res) => {
+app.put('/orders/:orderId/status', authenticateToken, express.json(), async (req, res) => {
     try {
         const orderId = req.params.orderId;
         const { status_id } = req.body;
