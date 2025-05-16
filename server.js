@@ -2500,7 +2500,7 @@ app.post('/chats/:chatId/messages', (req, res) => {
 });
 
 // Создать чат (например, при новом заказе)
-app.post('/chats', (req, res) => {
+app.post('/chats', express.json(), (req, res) => {
     const { title, user_id, executor_id } = req.body;
     if (!title || !user_id || !executor_id) return res.status(400).json({ error: 'title, user_id, executor_id обязательны' });
     db.query(
