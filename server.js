@@ -449,7 +449,7 @@ app.get('/benefits', async (req, res) => {
 });
 
 // Создание нового преимущества
-app.post('/benefits', async (req, res) => {
+app.post('/benefits', express.json(), (req, res) => {
     try {
         console.log('Получен запрос на создание преимущества:', req.body);
         const { benefit_title, benefit_description } = req.body;
@@ -1767,7 +1767,7 @@ app.delete('/projects/:id', async (req, res) => {
 });
 
 // Обновление преимущества
-app.put('/benefits/:id', async (req, res) => {
+app.put('/benefits/:id', express.json(), async (req, res) => {
     try {
         const { id } = req.params;
         const { benefit_title, benefit_description } = req.body;
