@@ -2473,7 +2473,9 @@ app.get('/chats/:chatId/messages', (req, res) => {
 });
 
 // Отправить сообщение
-app.post('/chats/:chatId/messages', (req, res) => {
+app.post('/chats/:chatId/messages', express.json(), (req, res) => {
+    console.log('POST /chats/:chatId/messages HEADERS:', req.headers);
+    console.log('POST /chats/:chatId/messages BODY:', req.body);
     const chatId = req.params.chatId;
     const { text, sender_id } = req.body;
     if (!text || !sender_id) {
