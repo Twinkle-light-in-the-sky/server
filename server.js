@@ -2603,7 +2603,7 @@ app.get('/chats/user/:userId', async (req, res) => {
 });
 
 // Обновление chat_id в заказе
-app.put('/orders/:orderId', authenticateToken, async (req, res) => {
+app.put('/orders/:orderId', authenticateToken, express.json(), async (req, res) => {
     try {
         const orderId = req.params.orderId;
         const { chat_id } = req.body;
