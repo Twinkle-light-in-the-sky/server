@@ -725,7 +725,7 @@ app.get('/orders', async (req, res) => {
 });
 
 // Эндпоинт для загрузки аватара
-app.post('/upload-avatar', authenticateToken, async (req, res) => {
+app.post('/upload-avatar', authenticateToken, express.json({ limit: '32mb' }), async (req, res) => {
   try {
     console.log('Получен запрос на загрузку аватара');
     
@@ -846,7 +846,7 @@ app.post('/upload-avatar', authenticateToken, async (req, res) => {
 });
 
 // Эндпоинт для обновления профиля пользователя
-app.put('/updateprofile', express.json({ limit: '32mb' }), bodyParser.json({ limit: '32mb' }), express.urlencoded({ extended: true, limit: '32mb' }), bodyParser.urlencoded({ extended: true, limit: '32mb' }), async (req, res) => {
+app.put('/updateprofile', authenticateToken, express.json({ limit: '32mb' }), async (req, res) => {
   try {
     console.log('Получен запрос на обновление профиля:', req.body);
     const userId = req.user.id;
