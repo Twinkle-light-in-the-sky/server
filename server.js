@@ -2068,18 +2068,27 @@ app.get('/templates', (req, res) => {
 
 // Получение цен на услуги
 app.get('/service_pricing', (req, res) => {
-    const query = `
+    const { service_id } = req.query;
+    let query = `
         SELECT 
-            service_type,
+            id,
+            service_id,
             base_price,
             price_per_block,
             min_blocks,
-            max_blocks
+            max_blocks,
+            is_active,
+            type
         FROM service_pricing
         WHERE is_active = 1
     `;
+    const params = [];
+    if (service_id) {
+        query += ' AND service_id = ?';
+        params.push(service_id);
+    }
 
-    db.query(query, (err, results) => {
+    db.query(query, params, (err, results) => {
         if (err) {
             console.error('Ошибка при получении цен:', err);
             return res.status(500).json({ error: 'Ошибка при получении цен' });
