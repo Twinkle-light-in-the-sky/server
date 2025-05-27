@@ -8,44 +8,9 @@ const path = require('path');
 const multer = require('multer');
 const https = require('https');
 const fs = require('fs');
-const { Storage } = require('megajs');
 
 // Загружаем переменные окружения
 require('dotenv').config();
-
-// Инициализация MEGA клиента
-const megaStorage = new Storage({
-    email: process.env.MEGA_EMAIL,
-    password: process.env.MEGA_PASSWORD
-});
-
-// Функция для загрузки файла на MEGA
-async function uploadToMega(fileBuffer, fileName) {
-    try {
-        await megaStorage.ready;
-        const file = await megaStorage.upload(fileName, fileBuffer);
-        const fileLink = await file.link();
-        return fileLink;
-    } catch (error) {
-        console.error('Ошибка при загрузке на MEGA:', error);
-        throw error;
-    }
-}
-
-// Функция для получения файла с MEGA
-async function getFromMega(fileId) {
-    try {
-        await megaStorage.ready;
-        const file = await megaStorage.find(fileId);
-        if (!file) {
-            throw new Error('Файл не найден');
-        }
-        return await file.download();
-    } catch (error) {
-        console.error('Ошибка при получении файла с MEGA:', error);
-        throw error;
-    }
-}
 
 // Проверяем наличие необходимых переменных окружения
 console.log('Проверка переменных окружения:');
@@ -82,7 +47,7 @@ const corsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    credentials: false,
+    credentials: true,
     maxAge: 86400
 };
 
@@ -109,7 +74,7 @@ app.use((req, res, next) => {
     const origin = req.headers.origin;
     if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
-        res.header('Access-Control-Allow-Credentials', 'false');
+        res.header('Access-Control-Allow-Credentials', 'true');
     }
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
@@ -559,17 +524,14 @@ app.get('/orderstatuses', async (req, res) => {
     }
 });
 
-app.post('/createOrder', authenticateToken, upload.fields([
-    { name: 'files', maxCount: 5 },
-    { name: 'template_file', maxCount: 1 }
-]), async (req, res) => {
+app.post('/createOrder', authenticateToken, upload.array('files', 5), async (req, res) => {
     try {
         console.log('Получен запрос на создание заказа:', req.body);
 
-        const {
-            project_name,
-            user_id,
-            service_id,
+        const { 
+            project_name, 
+            user_id, 
+            service_id, 
             template_id,
             site_type,
             blocks_count,
@@ -591,7 +553,7 @@ app.post('/createOrder', authenticateToken, upload.fields([
                 status_id,
                 order_date
             });
-            return res.status(400).json({
+            return res.status(400).json({ 
                 success: false,
                 message: 'Не все обязательные поля заполнены'
             });
@@ -611,35 +573,19 @@ app.post('/createOrder', authenticateToken, upload.fields([
         });
 
         if (!template) {
-            return res.status(400).json({
+            return res.status(400).json({ 
                 success: false,
                 message: 'Указанный шаблон не существует'
             });
         }
-
-        // --- ДОБАВЛЯЕМ ЗАГРУЗКУ ФАЙЛА ШАБЛОНА НА MEGA ---
-        let templateFileUrl = null;
-        // if (req.files && req.files['template_file'] && req.files['template_file'][0]) {
-        //     try {
-        //         const file = req.files['template_file'][0];
-        //         templateFileUrl = await uploadToMega(file.buffer, file.originalname);
-        //     } catch (err) {
-        //         console.error('Ошибка при загрузке файла шаблона на MEGA:', err);
-        //         return res.status(500).json({
-        //             success: false,
-        //             message: 'Ошибка при загрузке файла шаблона'
-        //         });
-        //     }
-        // }
-        // --- КОНЕЦ ДОБАВЛЕНИЯ ---
 
         // Создаем заказ
         const insertQuery = `
             INSERT INTO orders (
                 project_name, user_id, service_id, template_id, 
                 site_type, blocks_count, price, additional_info,
-                need_receipt, status_id, executor_id, order_date, template_file_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                need_receipt, status_id, executor_id, order_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const values = [
@@ -654,8 +600,7 @@ app.post('/createOrder', authenticateToken, upload.fields([
             need_receipt ? 1 : 0,
             status_id,
             executor_id,
-            order_date,
-            templateFileUrl
+            order_date
         ];
 
         console.log('Подготовленные значения для вставки:', values);
@@ -691,12 +636,11 @@ app.post('/createOrder', authenticateToken, upload.fields([
         res.json({
             success: true,
             orderId: result.insertId,
-            template_file_url: templateFileUrl,
             message: 'Заказ успешно создан'
         });
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
-        res.status(500).json({
+        res.status(500).json({ 
             success: false,
             message: 'Внутренняя ошибка сервера',
             error: error.message, // Показываем текст ошибки
@@ -1211,7 +1155,7 @@ app.put('/services/:id', upload.single('image'), async (req, res) => {
                 console.error('Ошибка при обработке изображения:', error);
                 return res.status(500).json({ 
                     success: false,
-                    error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
+                    error: 'Ошибка при загрузке изображения'
                 });
             }
         }
@@ -2834,113 +2778,4 @@ const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
-});
-
-// Обновляем эндпоинт для загрузки шаблона
-app.post('/templates/upload', authenticateToken, upload.single('template'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                error: 'Файл не был загружен'
-            });
-        }
-
-        const { service_id, name, description } = req.body;
-
-        // Загружаем файл на MEGA
-        let megaLink = '';
-        try {
-            megaLink = await uploadToMega(req.file.buffer, req.file.originalname);
-        } catch (error) {
-            console.error('Ошибка при загрузке файла на MEGA:', error);
-            return res.status(500).json({
-                success: false,
-                error: 'Ошибка при загрузке файла на MEGA'
-            });
-        }
-
-        // Сохраняем информацию о шаблоне в базе данных
-        const insertQuery = `
-            INSERT INTO templates (name, description, service_id, file_link, file_name)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-
-        db.query(insertQuery, [
-            name,
-            description,
-            service_id,
-            megaLink,
-            req.file.originalname
-        ], (err, result) => {
-            if (err) {
-                console.error('Ошибка при сохранении шаблона:', err);
-                return res.status(500).json({
-                    success: false,
-                    error: 'Ошибка при сохранении шаблона'
-                });
-            }
-
-            res.json({
-                success: true,
-                message: 'Шаблон успешно загружен',
-                template: {
-                    id: result.insertId,
-                    name,
-                    description,
-                    service_id,
-                    file_link: megaLink,
-                    file_name: req.file.originalname
-                }
-            });
-        });
-    } catch (error) {
-        console.error('Ошибка при загрузке шаблона:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка при загрузке шаблона'
-        });
-    }
-});
-
-// Обновляем эндпоинт для скачивания шаблона
-app.get('/templates/:id/download', async (req, res) => {
-    try {
-        const templateId = req.params.id;
-
-        // Получаем информацию о шаблоне
-        const [template] = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM templates WHERE id = ?', [templateId], (err, results) => {
-                if (err) reject(err);
-                else resolve(results);
-            });
-        });
-
-        if (!template) {
-            return res.status(404).json({
-                success: false,
-                error: 'Шаблон не найден'
-            });
-        }
-
-        // Получаем файл с MEGA
-        try {
-            const fileBuffer = await getFromMega(template.file_link);
-            res.setHeader('Content-Type', 'application/octet-stream');
-            res.setHeader('Content-Disposition', `attachment; filename="${template.file_name}"`);
-            res.send(fileBuffer);
-        } catch (error) {
-            console.error('Ошибка при скачивании файла с MEGA:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Ошибка при скачивании файла'
-            });
-        }
-    } catch (error) {
-        console.error('Ошибка при скачивании шаблона:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка при скачивании шаблона'
-        });
-    }
 });
