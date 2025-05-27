@@ -80,7 +80,7 @@ const upload = multer({
 const corsOptions = {
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'X-HTTP-Method-Override'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: false,
     maxAge: 86400,
@@ -112,10 +112,10 @@ app.use((req, res, next) => {
     if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
         res.header('Access-Control-Allow-Credentials', 'false');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-HTTP-Method-Override');
+        res.header('Access-Control-Max-Age', '86400');
     }
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
-    res.header('Access-Control-Max-Age', '86400');
     
     if (req.method === 'OPTIONS') {
         console.log('Handling OPTIONS request');
@@ -567,6 +567,16 @@ app.post('/createOrder', authenticateToken, upload.fields([
 ]), async (req, res) => {
     try {
         console.log('Получен запрос на создание заказа:', req.body);
+
+        // Парсим selected_addons, если это строка
+        let selected_addons = req.body.selected_addons;
+        if (typeof selected_addons === 'string') {
+            try {
+                selected_addons = JSON.parse(selected_addons);
+            } catch (e) {
+                selected_addons = [];
+            }
+        }
 
         const {
             project_name,
@@ -1045,11 +1055,10 @@ app.put('/updateprofile', authenticateToken, express.json({ limit: '32mb' }), as
 
 // Добавляем обработку ошибок
 app.use((err, req, res, next) => {
-    console.error('Ошибка сервера:', err);
+    console.error('Server Error:', err);
     res.status(500).json({
-        success: false,
-        message: 'Внутренняя ошибка сервера',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        error: 'Internal Server Error',
+        message: err.message
     });
 });
 
