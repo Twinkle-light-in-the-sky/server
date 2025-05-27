@@ -652,18 +652,20 @@ app.post('/createOrder', authenticateToken, upload.fields([
 
         // --- ДОБАВЛЯЕМ ЗАГРУЗКУ ФАЙЛА ШАБЛОНА НА MEGA ---
         let templateFileUrl = null;
-        // if (req.files && req.files['template_file'] && req.files['template_file'][0]) {
-        //     try {
-        //         const file = req.files['template_file'][0];
-        //         templateFileUrl = await uploadToMega(file.buffer, file.originalname);
-        //     } catch (err) {
-        //         console.error('Ошибка при загрузке файла шаблона на MEGA:', err);
-        //         return res.status(500).json({
-        //             success: false,
-        //             message: 'Ошибка при загрузке файла шаблона'
-        //         });
-        //     }
-        // }
+        if (req.files && req.files['template_file'] && req.files['template_file'][0]) {
+            try {
+                const file = req.files['template_file'][0];
+                console.log('Пробуем загрузить файл на MEGA:', file.originalname, file.buffer.length);
+                templateFileUrl = await uploadToMega(file.buffer, file.originalname);
+                console.log('Файл успешно загружен на MEGA:', templateFileUrl);
+            } catch (err) {
+                console.error('Ошибка при загрузке файла шаблона на MEGA:', err);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Ошибка при загрузке файла шаблона'
+                });
+            }
+        }
         // --- КОНЕЦ ДОБАВЛЕНИЯ ---
 
         // Создаем заказ
