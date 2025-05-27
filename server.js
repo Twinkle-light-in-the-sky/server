@@ -22,8 +22,16 @@ const megaStorage = new Storage({
 // Функция для загрузки файла на MEGA
 async function uploadToMega(fileBuffer, fileName) {
     try {
-        const file = await megaStorage.upload(fileName, fileBuffer).complete;
-        const fileLink = await file.getLink();
+        await megaStorage.ready;
+        const uploadStream = megaStorage.upload(fileName, fileBuffer);
+        await new Promise((resolve, reject) => {
+            uploadStream.on('complete', resolve);
+            uploadStream.on('error', reject);
+        });
+        // После загрузки ищем файл по имени
+        const file = megaStorage.files.find(f => f.name === fileName);
+        if (!file) throw new Error('Файл не найден после загрузки');
+        const fileLink = await file.link();
         return fileLink;
     } catch (error) {
         console.error('Ошибка при загрузке на MEGA:', error);
