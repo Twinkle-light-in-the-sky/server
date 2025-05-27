@@ -83,7 +83,9 @@ const corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     credentials: false,
-    maxAge: 86400
+    maxAge: 86400,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 };
 
 const app = express();
@@ -117,7 +119,7 @@ app.use((req, res, next) => {
     
     if (req.method === 'OPTIONS') {
         console.log('Handling OPTIONS request');
-        return res.sendStatus(200);
+        return res.sendStatus(204);
     }
     next();
 });
