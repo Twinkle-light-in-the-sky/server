@@ -61,11 +61,32 @@ if (!process.env.IMGBB_API_KEY) {
 
 // Настройка multer для обработки файлов
 const storage = multer.memoryStorage();
+const allowedMimeTypes = [
+    'image/',
+    'application/zip',
+    'application/x-zip-compressed',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/x-rar-compressed',
+    'application/x-7z-compressed',
+    'image/vnd.adobe.photoshop',
+    'application/octet-stream', // для некоторых нестандартных файлов
+    'application/x-fig',
+    'application/x-sketch',
+    'application/vnd.adobe.xd',
+    'application/postscript',
+    'image/svg+xml'
+];
+
 const fileFilter = (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    if (
+        file.mimetype.startsWith('image/') ||
+        allowedMimeTypes.includes(file.mimetype)
+    ) {
         cb(null, true);
     } else {
-        cb(new Error('Неверный тип файла. Разрешены только изображения.'), false);
+        cb(new Error('Неверный тип файла. Разрешены только изображения, zip, pdf, doc, docx, rar, 7z, psd, fig, sketch, xd, ai, eps, svg.'), false);
     }
 };
 
@@ -706,6 +727,23 @@ app.post('/createOrder', authenticateToken, upload.fields([
             template_file_url: templateFileUrl,
             message: 'Заказ успешно создан'
         });
+
+        // === ДОБАВЛЯЕМ ДОПОЛНИТЕЛЬНЫЕ УСЛУГИ ===
+        if (Array.isArray(selected_addons) && selected_addons.length > 0) {
+            const addonValues = selected_addons.map(addonId => [result.insertId, addonId]);
+            db.query(
+                'INSERT INTO order_addons (order_id, addon_id) VALUES ?',
+                [addonValues],
+                (err, res2) => {
+                    if (err) {
+                        console.error('Ошибка при добавлении дополнительных услуг:', err);
+                    } else {
+                        console.log('Дополнительные услуги успешно добавлены:', res2);
+                    }
+                }
+            );
+        }
+        // === КОНЕЦ ДОБАВЛЕНИЯ ДОП.УСЛУГ ===
     } catch (error) {
         console.error('Ошибка при обработке запроса:', error);
         res.status(500).json({
