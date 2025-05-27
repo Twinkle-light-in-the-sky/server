@@ -28,8 +28,9 @@ async function uploadToMega(fileBuffer, fileName) {
             uploadStream.on('complete', resolve);
             uploadStream.on('error', reject);
         });
-        // После загрузки ищем файл по имени
-        const file = megaStorage.files.find(f => f.name === fileName);
+        // Получаем массив файлов из объекта
+        const filesArr = Object.values(megaStorage.files);
+        const file = filesArr.find(f => f.name === fileName);
         if (!file) throw new Error('Файл не найден после загрузки');
         const fileLink = await file.link();
         return fileLink;
