@@ -22,9 +22,8 @@ const megaStorage = new Storage({
 // Функция для загрузки файла на MEGA
 async function uploadToMega(fileBuffer, fileName) {
     try {
-        await megaStorage.ready;
-        const file = await megaStorage.upload(fileName, fileBuffer);
-        const fileLink = await file.link();
+        const file = await megaStorage.upload(fileName, fileBuffer).complete;
+        const fileLink = await file.getLink();
         return fileLink;
     } catch (error) {
         console.error('Ошибка при загрузке на MEGA:', error);
