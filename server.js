@@ -19,24 +19,45 @@ const megaStorage = new Storage({
     password: process.env.MEGA_PASSWORD
 });
 
+// Добавляем обработку ошибок инициализации MEGA
+megaStorage.on('ready', () => {
+    console.log('MEGA клиент успешно инициализирован');
+}).on('error', (err) => {
+    console.error('Ошибка инициализации MEGA клиента:', err);
+});
+
 // Функция для загрузки файла на MEGA
 async function uploadToMega(fileBuffer, fileName) {
     try {
-        await megaStorage.ready;
+        if (!megaStorage.ready) {
+            await new Promise((resolve, reject) => {
+                megaStorage.once('ready', resolve);
+                megaStorage.once('error', reject);
+            });
+        }
+
+        console.log('Начинаем загрузку файла на MEGA:', fileName);
         const uploadStream = megaStorage.upload(fileName, fileBuffer);
+        
         await new Promise((resolve, reject) => {
             uploadStream.on('complete', resolve);
             uploadStream.on('error', reject);
         });
-        // Получаем массив файлов из объекта
+
+        console.log('Файл успешно загружен, получаем ссылку');
         const filesArr = Object.values(megaStorage.files);
         const file = filesArr.find(f => f.name === fileName);
-        if (!file) throw new Error('Файл не найден после загрузки');
+        
+        if (!file) {
+            throw new Error('Файл не найден после загрузки');
+        }
+
         const fileLink = await file.link();
+        console.log('Ссылка на файл получена:', fileLink);
         return fileLink;
     } catch (error) {
         console.error('Ошибка при загрузке на MEGA:', error);
-        throw error;
+        throw new Error(`Ошибка загрузки на MEGA: ${error.message}`);
     }
 }
 
@@ -134,24 +155,6 @@ app.use(cors(corsOptions));
 
 // Обработка preflight запросов
 app.options('*', cors(corsOptions));
-
-// Добавляем middleware для всех запросов
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
-        res.header('Access-Control-Allow-Credentials', 'false');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-HTTP-Method-Override');
-        res.header('Access-Control-Max-Age', '86400');
-    }
-    
-    if (req.method === 'OPTIONS') {
-        console.log('Handling OPTIONS request');
-        return res.sendStatus(204);
-    }
-    next();
-});
 
 // Serve static files from the React app
 //app.use(express.static(path.join(__dirname, './client/build')));
