@@ -111,7 +111,7 @@ const corsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'X-HTTP-Method-Override'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    credentials: false,
+    credentials: true,
     maxAge: 86400,
     preflightContinue: false,
     optionsSuccessStatus: 204
@@ -453,22 +453,6 @@ app.get('/projects', async (req, res) => {
             });
         });
         console.log('Найдено проектов:', projects.length);
-        // CORS fix
-        const origin = req.headers.origin;
-        const allowedOrigins = [
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'https://barsikec.beget.tech',
-            'http://barsikec.beget.tech',
-            'https://startset-app.vercel.app',
-            'https://server-9va8.onrender.com'
-        ];
-        if (origin && allowedOrigins.includes(origin)) {
-            res.header('Access-Control-Allow-Origin', origin);
-            res.header('Access-Control-Allow-Credentials', 'true');
-        }
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.json({
             success: true,
             data: projects
@@ -490,27 +474,42 @@ app.get('/benefits', async (req, res) => {
                 console.error("Ошибка при получении данных преимуществ:", err);
                 return res.status(500).json({ error: 'Ошибка при получении данных' });
             }
-            // CORS fix
-            const origin = req.headers.origin;
-            const allowedOrigins = [
-                'http://localhost:3000',
-                'http://localhost:3001',
-                'https://barsikec.beget.tech',
-                'http://barsikec.beget.tech',
-                'https://startset-app.vercel.app',
-                'https://server-9va8.onrender.com'
-            ];
-            if (origin && allowedOrigins.includes(origin)) {
-                res.header('Access-Control-Allow-Origin', origin);
-                res.header('Access-Control-Allow-Credentials', 'true');
-            }
-            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.json(results);
         });
     } catch (error) {
         console.error("Ошибка при обработке запроса /benefits:", error);
         res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.get('/orderstatuses', async (req, res) => {
+    try {
+        console.log('Получен запрос на получение статусов заказов');
+        
+        const getStatusesQuery = 'SELECT * FROM order_statuses';
+        db.query(getStatusesQuery, (err, results) => {
+            if (err) {
+                console.error("Ошибка при получении статусов:", err);
+                return res.status(500).json({ error: 'Ошибка при получении данных' });
+            }
+            
+            console.log('Отправка статусов заказов:', results);
+            res.json(results);
+        });
+    } catch (error) {
+        console.error("Ошибка при обработке запроса /orderstatuses:", error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.get('/executors', async (req, res) => {
+    try {
+        console.log('Вызов getAllExecutors');
+        const executors = await getAllExecutors();
+        res.json(executors);
+    } catch (error) {
+        console.error("Ошибка при получении исполнителей:", error);
+        res.status(500).json({ error: 'Ошибка при получении исполнителей' });
     }
 });
 
@@ -558,35 +557,6 @@ app.post('/benefits', express.json(), (req, res) => {
             success: false,
             error: 'Ошибка сервера'
         });
-    }
-});
-
-app.get('/orderstatuses', async (req, res) => {
-    try {
-        console.log('Получен запрос на получение статусов заказов');
-        
-        const getStatusesQuery = 'SELECT * FROM order_statuses';
-        db.query(getStatusesQuery, (err, results) => {
-            if (err) {
-                console.error("Ошибка при получении статусов:", err);
-                return res.status(500).json({ error: 'Ошибка при получении данных' });
-            }
-            
-            // Добавляем CORS-заголовки
-            const origin = req.headers.origin;
-            if (origin && ['http://localhost:3000', 'http://localhost:3001', 'https://barsikec.beget.tech', 'http://barsikec.beget.tech', 'https://startset-app.vercel.app', 'https://server-9va8.onrender.com'].includes(origin)) {
-                res.header('Access-Control-Allow-Origin', origin);
-                res.header('Access-Control-Allow-Credentials', 'true');
-            }
-            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
-            
-            console.log('Отправка статусов заказов:', results);
-            res.json(results);
-        });
-    } catch (error) {
-        console.error("Ошибка при обработке запроса /orderstatuses:", error);
-        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
@@ -762,34 +732,6 @@ app.post('/createOrder', authenticateToken, upload.fields([
             error: error.message, // Показываем текст ошибки
             stack: error.stack    // (по желанию) Показываем стек вызова
         });
-    }
-});
-
-
-app.get('/executors', async (req, res) => {
-    try {
-        console.log('Вызов getAllExecutors');
-        const executors = await getAllExecutors();
-        // CORS fix
-        const origin = req.headers.origin;
-        const allowedOrigins = [
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'https://barsikec.beget.tech',
-            'http://barsikec.beget.tech',
-            'https://startset-app.vercel.app',
-            'https://server-9va8.onrender.com'
-        ];
-        if (origin && allowedOrigins.includes(origin)) {
-            res.header('Access-Control-Allow-Origin', origin);
-            res.header('Access-Control-Allow-Credentials', 'true');
-        }
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-        res.json(executors);
-    } catch (error) {
-        console.error("Ошибка при получении исполнителей:", error);
-        res.status(500).json({ error: 'Ошибка при получении исполнителей' });
     }
 });
 
