@@ -2851,6 +2851,33 @@ app.post('/chats/:chatId/read', authenticateToken, async (req, res) => {
     );
 });
 
+// Эндпоинт для отправки вопроса
+app.post('/questions', authenticateToken, express.json(), async (req, res) => {
+    try {
+        const { question_text } = req.body;
+        const userId = req.user ? req.user.id : null; // Получаем ID пользователя, если он авторизован
+        const userName = req.user ? req.user.username : 'Аноним'; // Получаем имя пользователя или 'Аноним'
+
+        if (!question_text || question_text.trim() === '') {
+            return res.status(400).json({ success: false, message: 'Пожалуйста, введите ваш вопрос.' });
+        }
+
+        const insertQuery = 'INSERT INTO questions (user_id, user_name, question_text) VALUES (?, ?, ?)';
+        
+        db.query(insertQuery, [userId, userName, question_text.trim()], (err, result) => {
+            if (err) {
+                console.error('Ошибка при сохранении вопроса в БД:', err);
+                return res.status(500).json({ success: false, message: 'Ошибка при сохранении вопроса.' });
+            }
+            res.json({ success: true, message: 'Ваш вопрос успешно отправлен!' });
+        });
+
+    } catch (error) {
+        console.error('Ошибка при обработке запроса вопроса:', error);
+        res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера при отправке вопроса.' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
