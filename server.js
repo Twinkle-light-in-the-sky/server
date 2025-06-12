@@ -747,7 +747,10 @@ app.get('/orders', async (req, res) => {
                    s.title as service_name,
                    e.fullname as executor_name,
                    os.status_name,
-                   u.username as customer_name
+                   u.username as customer_name,
+                   o.review_rating,
+                   o.review_text,
+                   o.review_left
             FROM orders o
             LEFT JOIN services s ON o.service_id = s.id
             LEFT JOIN executors e ON o.executor_id = e.id
@@ -2960,5 +2963,65 @@ app.get('/templates/:id/download', async (req, res) => {
             success: false,
             error: 'Ошибка при скачивании шаблона'
         });
+    }
+});
+
+// Эндпоинт для отправки отзыва
+app.post('/orders/:orderId/review', authenticateToken, express.json(), async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        const { rating, text } = req.body;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        // Проверяем, что рейтинг передан
+        if (rating === undefined || rating === null || rating < 0 || rating > 5) {
+            return res.status(400).json({ success: false, message: 'Некорректный рейтинг' });
+        }
+
+        // Проверяем, что заказ принадлежит текущему пользователю или пользователь - админ
+        const [order] = await new Promise((resolve, reject) => {
+            const checkOrderQuery = userRole === 'admin'
+                ? 'SELECT * FROM orders WHERE id = ?'
+                : 'SELECT * FROM orders WHERE id = ? AND user_id = ?';
+            const checkOrderParams = userRole === 'admin'
+                ? [orderId]
+                : [orderId, userId];
+
+            db.query(checkOrderQuery, checkOrderParams, (err, results) => {
+                if (err) return reject(err);
+                resolve(results);
+            });
+        });
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Заказ не найден или у вас нет прав' });
+        }
+
+        // Проверяем, что статус заказа завершен (status_id = 7) и отзыв еще не оставлен
+        if (order.status_id !== 7 && userRole !== 'admin') {
+            return res.status(400).json({ success: false, message: 'Отзыв можно оставить только для завершенных заказов' });
+        }
+        if (order.review_left && userRole !== 'admin') {
+            return res.status(400).json({ success: false, message: 'Отзыв уже оставлен для этого заказа' });
+        }
+
+        // Обновляем заказ с отзывом
+        await new Promise((resolve, reject) => {
+            db.query(
+                'UPDATE orders SET review_rating = ?, review_text = ?, review_left = 1 WHERE id = ?',
+                [rating, text, orderId],
+                (err, result) => {
+                    if (err) return reject(err);
+                    resolve(result);
+                }
+            );
+        });
+
+        res.json({ success: true, message: 'Отзыв успешно добавлен' });
+
+    } catch (error) {
+        console.error('Ошибка при добавлении отзыва:', error);
+        res.status(500).json({ success: false, message: 'Ошибка сервера при добавлении отзыва' });
     }
 });
