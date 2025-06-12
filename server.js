@@ -3052,3 +3052,147 @@ app.post('/orders/:orderId/review', authenticateToken, express.json(), async (re
         res.status(500).json({ success: false, message: 'Ошибка сервера при добавлении отзыва' });
     }
 });
+
+// Эндпоинт для получения вопросов
+app.get('/questions', authenticateToken, (req, res) => {
+    try {
+        const { userId } = req.query; // Опциональный параметр для фильтрации по пользователю
+        
+        let query = `
+            SELECT q.*, u.username as user_name 
+            FROM questions q
+            LEFT JOIN users u ON q.user_id = u.id
+        `;
+        
+        const queryParams = [];
+        
+        if (userId) {
+            query += ' WHERE q.user_id = ?';
+            queryParams.push(userId);
+        }
+        
+        query += ' ORDER BY q.created_at DESC';
+        
+        db.query(query, queryParams, (err, results) => {
+            if (err) {
+                console.error('Ошибка при получении вопросов:', err);
+                return res.status(500).json({ 
+                    success: false, 
+                    message: 'Ошибка сервера при получении вопросов',
+                    error: err.message 
+                });
+            }
+            res.json({ 
+                success: true, 
+                questions: results 
+            });
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса вопросов:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Ошибка сервера',
+            error: error.message 
+        });
+    }
+});
+
+// Эндпоинт для обновления вопроса (добавления ответа)
+app.put('/questions/:id', authenticateToken, express.json(), (req, res) => {
+    try {
+        const questionId = req.params.id;
+        const { answer_text, admin_id } = req.body;
+        
+        if (!answer_text || !admin_id) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'answer_text и admin_id обязательны' 
+            });
+        }
+
+        const answered_at = new Date();
+        const status = 'answered';
+
+        const query = `
+            UPDATE questions 
+            SET answer_text = ?, 
+                answered_at = ?, 
+                admin_id = ?, 
+                status = ? 
+            WHERE id = ?
+        `;
+
+        db.query(
+            query, 
+            [answer_text, answered_at, admin_id, status, questionId],
+            (err, result) => {
+                if (err) {
+                    console.error('Ошибка при обновлении вопроса:', err);
+                    return res.status(500).json({ 
+                        success: false, 
+                        message: 'Ошибка сервера при обновлении вопроса',
+                        error: err.message 
+                    });
+                }
+
+                if (result.affectedRows === 0) {
+                    return res.status(404).json({ 
+                        success: false, 
+                        message: 'Вопрос не найден' 
+                    });
+                }
+
+                res.json({ 
+                    success: true, 
+                    message: 'Вопрос успешно обновлен' 
+                });
+            }
+        );
+    } catch (error) {
+        console.error('Ошибка при обработке запроса обновления вопроса:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Ошибка сервера',
+            error: error.message 
+        });
+    }
+});
+
+// Эндпоинт для удаления вопроса
+app.delete('/questions/:id', authenticateToken, (req, res) => {
+    try {
+        const questionId = req.params.id;
+
+        const query = 'DELETE FROM questions WHERE id = ?';
+
+        db.query(query, [questionId], (err, result) => {
+            if (err) {
+                console.error('Ошибка при удалении вопроса:', err);
+                return res.status(500).json({ 
+                    success: false, 
+                    message: 'Ошибка сервера при удалении вопроса',
+                    error: err.message 
+                });
+            }
+
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ 
+                    success: false, 
+                    message: 'Вопрос не найден' 
+                });
+            }
+
+            res.json({ 
+                success: true, 
+                message: 'Вопрос успешно удален' 
+            });
+        });
+    } catch (error) {
+        console.error('Ошибка при обработке запроса удаления вопроса:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Ошибка сервера',
+            error: error.message 
+        });
+    }
+});
