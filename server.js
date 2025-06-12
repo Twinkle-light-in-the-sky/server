@@ -3061,7 +3061,7 @@ app.get('/questions', authenticateToken, (req, res) => {
         let query = `
             SELECT q.*, u.username as user_name 
             FROM questions q
-            LEFT JOIN users u ON q.user_id = u.id
+            LEFT JOIN user u ON q.user_id = u.id
         `;
         
         const queryParams = [];
