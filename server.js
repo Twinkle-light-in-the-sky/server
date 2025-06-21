@@ -1423,61 +1423,44 @@ app.post('/projects', upload.single('projects_background'), async (req, res) => 
         // Если есть файл изображения
         if (req.file) {
             try {
-                console.log('Начинаем обработку изображения');
-                // Конвертируем буфер в base64
-                const base64Image = req.file.buffer.toString('base64');
-                console.log('Изображение конвертировано в base64, размер:', base64Image.length);
+                // Готовим multipart/form-data
+                const form = new FormData();
+                form.append('source', req.file.buffer, {
+                    filename: req.file.originalname || `project-bg-${Date.now()}.jpg`,
+                    contentType: req.file.mimetype || 'image/jpeg'
+                });
 
-                // Загружаем изображение на ImgBB
-                const postData = new URLSearchParams();
-                postData.append('image', base64Image);
-                postData.append('key', process.env.IMGBB_API_KEY);
-
-                console.log('Отправляем запрос к ImgBB API');
+                // Опции запроса
                 const options = {
-                    hostname: 'api.imgbb.com',
-                    path: '/1/upload',
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Content-Length': postData.toString().length
+                        ...form.getHeaders(),
+                        'X-API-Key': process.env.RADIKAL_API_KEY
                     }
                 };
 
-                const imgbbResponse = await new Promise((resolve, reject) => {
-                    const req = https.request(options, (res) => {
+                // Отправляем запрос
+                imageUrl = await new Promise((resolve, reject) => {
+                    const request = https.request('https://radikal.cloud/api/1/upload', options, (response) => {
                         let data = '';
-                        res.on('data', (chunk) => {
-                            data += chunk;
-                        });
-                        res.on('end', () => {
+                        response.on('data', (chunk) => { data += chunk; });
+                        response.on('end', () => {
                             try {
-                                const parsedData = JSON.parse(data);
-                                console.log('Получен ответ от ImgBB:', parsedData);
-                                resolve(parsedData);
+                                const result = JSON.parse(data);
+                                if (!result.success && !result.image) {
+                                    return reject('Ошибка при загрузке на Radikal.cloud');
+                                }
+                                const url = result.image?.url || result.file?.url || result.url || null;
+                                if (!url) return reject('Не удалось получить ссылку на изображение');
+                                resolve(url);
                             } catch (e) {
-                                console.error('Ошибка парсинга ответа ImgBB:', e);
-                                reject(e);
+                                reject('Ошибка при обработке ответа Radikal.cloud');
                             }
                         });
                     });
-
-                    req.on('error', (error) => {
-                        console.error('Ошибка запроса к ImgBB:', error);
-                        reject(error);
-                    });
-
-                    req.write(postData.toString());
-                    req.end();
+                    request.on('error', (err) => reject('Ошибка при отправке запроса на Radikal.cloud'));
+                    form.pipe(request);
                 });
-
-                if (!imgbbResponse.success) {
-                    console.error('Ошибка от ImgBB:', imgbbResponse);
-                    throw new Error('Ошибка при загрузке изображения на ImgBB');
-                }
-
-                imageUrl = imgbbResponse.data.url;
-                console.log('Изображение успешно загружено:', imageUrl);
             } catch (error) {
                 console.error('Ошибка при обработке изображения:', error);
                 return res.status(500).json({ 
@@ -1551,59 +1534,44 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
         // Если загружено новое изображение
         if (req.file) {
             try {
-                console.log('Начинаем обработку изображения');
-                // Конвертируем буфер в base64
-                const base64Image = req.file.buffer.toString('base64');
-                console.log('Изображение конвертировано в base64, размер:', base64Image.length);
+                // Готовим multipart/form-data
+                const form = new FormData();
+                form.append('source', req.file.buffer, {
+                    filename: req.file.originalname || `project-bg-${id}-${Date.now()}.jpg`,
+                    contentType: req.file.mimetype || 'image/jpeg'
+                });
 
-                // Загружаем изображение на ImgBB
-                const postData = new URLSearchParams();
-                postData.append('image', base64Image);
-                postData.append('key', process.env.IMGBB_API_KEY);
-
-                console.log('Отправляем запрос к ImgBB API');
+                // Опции запроса
                 const options = {
-                    hostname: 'api.imgbb.com',
-                    path: '/1/upload',
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Content-Length': postData.toString().length
+                        ...form.getHeaders(),
+                        'X-API-Key': process.env.RADIKAL_API_KEY
                     }
                 };
 
-                const imgbbResponse = await new Promise((resolve, reject) => {
-                    const req = https.request(options, (res) => {
+                // Отправляем запрос
+                imageUrl = await new Promise((resolve, reject) => {
+                    const request = https.request('https://radikal.cloud/api/1/upload', options, (response) => {
                         let data = '';
-                        res.on('data', (chunk) => {
-                            data += chunk;
-                        });
-                        res.on('end', () => {
+                        response.on('data', (chunk) => { data += chunk; });
+                        response.on('end', () => {
                             try {
-                                const parsedData = JSON.parse(data);
-                                console.log('Получен ответ от ImgBB:', parsedData);
-                                resolve(parsedData);
+                                const result = JSON.parse(data);
+                                if (!result.success && !result.image) {
+                                    return reject('Ошибка при загрузке на Radikal.cloud');
+                                }
+                                const url = result.image?.url || result.file?.url || result.url || null;
+                                if (!url) return reject('Не удалось получить ссылку на изображение');
+                                resolve(url);
                             } catch (e) {
-                                console.error('Ошибка парсинга ответа ImgBB:', e);
-                                reject(e);
+                                reject('Ошибка при обработке ответа Radikal.cloud');
                             }
                         });
                     });
-
-                    req.on('error', (error) => {
-                        console.error('Ошибка запроса к ImgBB:', error);
-                        reject(error);
-                    });
-
-                    req.write(postData.toString());
-                    req.end();
+                    request.on('error', (err) => reject('Ошибка при отправке запроса на Radikal.cloud'));
+                    form.pipe(request);
                 });
-
-                if (!imgbbResponse.success) {
-                    throw new Error('Ошибка при загрузке изображения на ImgBB');
-                }
-
-                imageUrl = imgbbResponse.data.url;
                 console.log('Изображение успешно загружено:', imageUrl);
             } catch (error) {
                 console.error('Ошибка при обработке изображения:', error);
