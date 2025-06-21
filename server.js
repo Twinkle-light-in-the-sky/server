@@ -79,15 +79,8 @@ async function getFromMega(fileId) {
 
 // Проверяем наличие необходимых переменных окружения
 console.log('Проверка переменных окружения:');
-console.log('IMGBB_API_KEY:', process.env.IMGBB_API_KEY || 'Отсутствует');
 console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Присутствует' : 'Отсутствует');
 console.log('DB_HOST:', process.env.DB_HOST ? 'Присутствует' : 'Отсутствует');
-
-// Устанавливаем значение IMGBB_API_KEY напрямую, если оно отсутствует в .env
-if (!process.env.IMGBB_API_KEY) {
-  process.env.IMGBB_API_KEY = '194fcc07333e5f7b8036a78bb24a89b0';
-  console.log('IMGBB_API_KEY установлен напрямую');
-}
 
 // Настройка multer для обработки файлов
 const storage = multer.memoryStorage();
@@ -518,10 +511,57 @@ app.get('/executors', async (req, res) => {
 });
 
 // Создание нового преимущества
-app.post('/benefits', express.json(), (req, res) => {
+app.post('/benefits', upload.single('benefit_image'), express.json(), async (req, res) => {
     try {
         console.log('Получен запрос на создание преимущества:', req.body);
         const { benefit_title, benefit_description } = req.body;
+        let imageUrl = null;
+
+        // Если есть файл изображения
+        if (req.file) {
+            try {
+                // Готовим multipart/form-data
+                const form = new FormData();
+                form.append('source', req.file.buffer, {
+                    filename: req.file.originalname || `benefit-img-${Date.now()}.jpg`,
+                    contentType: req.file.mimetype || 'image/jpeg'
+                });
+                const options = {
+                    method: 'POST',
+                    headers: {
+                        ...form.getHeaders(),
+                        'X-API-Key': process.env.RADIKAL_API_KEY
+                    }
+                };
+                imageUrl = await new Promise((resolve, reject) => {
+                    const request = https.request('https://radikal.cloud/api/1/upload', options, (response) => {
+                        let data = '';
+                        response.on('data', (chunk) => { data += chunk; });
+                        response.on('end', () => {
+                            try {
+                                const result = JSON.parse(data);
+                                if (!result.success && !result.image) {
+                                    return reject('Ошибка при загрузке на Radikal.cloud');
+                                }
+                                const url = result.image?.url || result.file?.url || result.url || null;
+                                if (!url) return reject('Не удалось получить ссылку на изображение');
+                                resolve(url);
+                            } catch (e) {
+                                reject('Ошибка при обработке ответа Radikal.cloud');
+                            }
+                        });
+                    });
+                    request.on('error', (err) => reject('Ошибка при отправке запроса на Radikal.cloud'));
+                    form.pipe(request);
+                });
+            } catch (error) {
+                console.error('Ошибка при обработке изображения:', error);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Ошибка при загрузке изображения. Пожалуйста, попробуйте другое изображение или повторите попытку позже.'
+                });
+            }
+        }
 
         // Проверяем наличие обязательных полей
         if (!benefit_title?.trim() || !benefit_description?.trim()) {
@@ -533,9 +573,14 @@ app.post('/benefits', express.json(), (req, res) => {
         }
 
         // Создаем новое преимущество в базе данных
-        const insertQuery = 'INSERT INTO benefits (benefit_title, benefit_description) VALUES (?, ?)';
+        const insertQuery = imageUrl
+            ? 'INSERT INTO benefits (benefit_title, benefit_description, benefit_image) VALUES (?, ?, ?)'
+            : 'INSERT INTO benefits (benefit_title, benefit_description) VALUES (?, ?)';
+        const insertValues = imageUrl
+            ? [benefit_title.trim(), benefit_description.trim(), imageUrl]
+            : [benefit_title.trim(), benefit_description.trim()];
         
-        db.query(insertQuery, [benefit_title.trim(), benefit_description.trim()], (err, result) => {
+        db.query(insertQuery, insertValues, (err, result) => {
             if (err) {
                 console.error("Ошибка при создании преимущества в БД:", err);
                 return res.status(500).json({
@@ -551,7 +596,8 @@ app.post('/benefits', express.json(), (req, res) => {
                 data: {
                     id: result.insertId,
                     benefit_title: benefit_title.trim(),
-                    benefit_description: benefit_description.trim()
+                    benefit_description: benefit_description.trim(),
+                    benefit_image: imageUrl
                 }
             });
         });
@@ -2370,41 +2416,42 @@ app.post('/orders/:orderId/upload-overlay', authenticateToken, upload.single('im
             size: req.file.size,
             mimetype: req.file.mimetype
         });
-        const base64Image = req.file.buffer.toString('base64');
-        const postData = new URLSearchParams();
-        postData.append('image', base64Image);
-        postData.append('key', process.env.IMGBB_API_KEY);
-
+        // Готовим multipart/form-data
+        const form = new FormData();
+        form.append('source', req.file.buffer, {
+            filename: req.file.originalname || `overlay-${orderId}-${Date.now()}.jpg`,
+            contentType: req.file.mimetype || 'image/jpeg'
+        });
+        // Опции запроса
         const options = {
-            hostname: 'api.imgbb.com',
-            path: '/1/upload',
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': postData.toString().length
+                ...form.getHeaders(),
+                'X-API-Key': process.env.RADIKAL_API_KEY
             }
         };
-
-        const imgbbResponse = await new Promise((resolve, reject) => {
-            const req2 = https.request(options, (res2) => {
+        // Отправляем запрос
+        const imageUrl = await new Promise((resolve, reject) => {
+            const request = https.request('https://radikal.cloud/api/1/upload', options, (response) => {
                 let data = '';
-                res2.on('data', (chunk) => { data += chunk; });
-                res2.on('end', () => {
-                    try { resolve(JSON.parse(data)); }
-                    catch (e) { reject(e); }
+                response.on('data', (chunk) => { data += chunk; });
+                response.on('end', () => {
+                    try {
+                        const result = JSON.parse(data);
+                        if (!result.success && !result.image) {
+                            return reject('Ошибка при загрузке на Radikal.cloud');
+                        }
+                        const url = result.image?.url || result.file?.url || result.url || null;
+                        if (!url) return reject('Не удалось получить ссылку на изображение');
+                        resolve(url);
+                    } catch (e) {
+                        reject('Ошибка при обработке ответа Radikal.cloud');
+                    }
                 });
             });
-            req2.on('error', (error) => { reject(error); });
-            req2.write(postData.toString());
-            req2.end();
+            request.on('error', (err) => reject('Ошибка при отправке запроса на Radikal.cloud'));
+            form.pipe(request);
         });
-
-        if (!imgbbResponse.success) {
-            throw new Error('Ошибка при загрузке изображения на ImgBB');
-        }
-
-        const imageUrl = imgbbResponse.data.url;
-
         // Сохраняем ссылку в заказе
         await new Promise((resolve, reject) => {
             db.query(
@@ -2416,7 +2463,6 @@ app.post('/orders/:orderId/upload-overlay', authenticateToken, upload.single('im
                 }
             );
         });
-
         res.json({ success: true, imageUrl });
     } catch (error) {
         console.error('Ошибка при загрузке оверлея проекта:', error);
