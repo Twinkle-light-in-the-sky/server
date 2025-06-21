@@ -1018,66 +1018,61 @@ app.post('/services/:id/upload-image', upload.single('image'), async (req, res) 
             return res.status(400).json({ error: 'Изображение не было загружено' });
         }
 
-        // Конвертируем буфер в base64
-        const base64Image = req.file.buffer.toString('base64');
+        // Готовим multipart/form-data
+        const form = new FormData();
+        form.append('source', req.file.buffer, {
+            filename: req.file.originalname || `service-bg-${req.params.id}-${Date.now()}.jpg`,
+            contentType: req.file.mimetype || 'image/jpeg'
+        });
 
-        // Загружаем изображение на ImgBB
-        const postData = new URLSearchParams();
-        postData.append('image', base64Image);
-        postData.append('key', process.env.IMGBB_API_KEY);
-
+        // Опции запроса
         const options = {
-            hostname: 'api.imgbb.com',
-            path: '/1/upload',
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': postData.toString().length
+                ...form.getHeaders(),
+                'X-API-Key': process.env.RADIKAL_API_KEY
             }
         };
 
-        const imgbbResponse = await new Promise((resolve, reject) => {
-            const req = https.request(options, (res) => {
-                let data = '';
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
-                res.on('end', () => {
-                    try {
-                        resolve(JSON.parse(data));
-                    } catch (e) {
-                        reject(e);
+        // Отправляем запрос
+        const request = https.request('https://radikal.cloud/api/1/upload', options, (response) => {
+            let data = '';
+            response.on('data', (chunk) => { data += chunk; });
+            response.on('end', () => {
+                try {
+                    const result = JSON.parse(data);
+                    if (!result.success && !result.image) {
+                        return res.status(500).json({ error: 'Ошибка при загрузке на Radikal.cloud' });
                     }
-                });
-            });
-
-            req.on('error', (error) => {
-                reject(error);
-            });
-
-            req.write(postData.toString());
-            req.end();
-        });
-
-        if (!imgbbResponse.success) {
-            throw new Error('Ошибка при загрузке изображения на ImgBB');
-        }
-
-        const imageUrl = imgbbResponse.data.url;
-
-        // Обновляем URL изображения в базе данных
-        const updateQuery = 'UPDATE services SET background_image = ? WHERE id = ?';
-        db.query(updateQuery, [imageUrl, req.params.id], (err, result) => {
-            if (err) {
-                console.error("Ошибка при обновлении изображения услуги:", err);
-                return res.status(500).json({ error: 'Ошибка при обновлении изображения услуги' });
-            }
-            res.json({ 
-                success: true, 
-                imageUrl,
-                message: 'Изображение успешно загружено и обновлено'
+                    // Обычно ссылка на картинку: result.image.url или result.file.url
+                    const imageUrl = result.image?.url || result.file?.url || result.url || null;
+                    if (!imageUrl) {
+                        return res.status(500).json({ error: 'Не удалось получить ссылку на изображение' });
+                    }
+                    // Обновляем URL изображения в базе данных
+                    const updateQuery = 'UPDATE services SET background_image = ? WHERE id = ?';
+                    db.query(updateQuery, [imageUrl, req.params.id], (err, result) => {
+                        if (err) {
+                            console.error("Ошибка при обновлении изображения услуги:", err);
+                            return res.status(500).json({ error: 'Ошибка при обновлении изображения услуги' });
+                        }
+                        res.json({ 
+                            success: true, 
+                            imageUrl,
+                            message: 'Изображение успешно загружено и обновлено'
+                        });
+                    });
+                } catch (e) {
+                    res.status(500).json({ error: 'Ошибка при обработке ответа Radikal.cloud' });
+                }
             });
         });
+
+        request.on('error', (err) => {
+            res.status(500).json({ error: 'Ошибка при отправке запроса на Radikal.cloud' });
+        });
+
+        form.pipe(request);
     } catch (error) {
         console.error("Ошибка при обработке запроса загрузки изображения:", error);
         res.status(500).json({ error: 'Ошибка сервера при загрузке изображения' });
