@@ -1575,6 +1575,18 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
         const { projects_title, projects_description, is_dark_theme, link, block_size } = req.body;
         console.log('Обновление проекта:', { id, projects_title, projects_description, is_dark_theme, link, block_size });
 
+        // Логируем файл
+        if (req.file) {
+            console.log('Файл для обновления проекта получен:', {
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+                size: req.file.size,
+                bufferType: typeof req.file.buffer
+            });
+        } else {
+            console.log('Файл для обновления проекта НЕ получен!');
+        }
+
         let imageUrl = null;
 
         // Если загружено новое изображение
@@ -1603,6 +1615,7 @@ app.put('/projects/:id', upload.single('projects_background'), async (req, res) 
                         response.on('data', (chunk) => { data += chunk; });
                         response.on('end', () => {
                             try {
+                                console.log('Ответ Radikal.cloud:', data);
                                 const result = JSON.parse(data);
                                 if (!result.success && !result.image) {
                                     return reject('Ошибка при загрузке на Radikal.cloud');
