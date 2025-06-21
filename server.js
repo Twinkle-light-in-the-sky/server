@@ -9,6 +9,7 @@ const multer = require('multer');
 const https = require('https');
 const fs = require('fs');
 const { Storage } = require('megajs');
+const FormData = require('form-data');
 
 // Загружаем переменные окружения
 require('dotenv').config();
@@ -791,121 +792,67 @@ app.get('/orders', async (req, res) => {
 // Эндпоинт для загрузки аватара
 app.post('/upload-avatar', authenticateToken, express.json({ limit: '32mb' }), async (req, res) => {
   try {
-    console.log('Получен запрос на загрузку аватара');
-    
     if (!req.body.image) {
-      console.log('Изображение не было загружено');
-      return res.status(400).json({
-        success: false,
-        error: 'Изображение не было загружено'
-      });
+      return res.status(400).json({ success: false, error: 'Изображение не было загружено' });
     }
 
     // Получаем base64 изображения
     const base64Image = req.body.image.split(',')[1];
-    console.log('Base64 изображение получено');
-    
-    // Загружаем изображение на ImgBB
-    const imgbbApiKey = process.env.IMGBB_API_KEY;
-    console.log('ImgBB API Key:', imgbbApiKey ? 'Присутствует' : 'Отсутствует');
-    
-    if (!imgbbApiKey) {
-      console.error('Отсутствует ключ ImgBB API');
-      return res.status(500).json({
-        success: false,
-        error: 'Ошибка конфигурации сервера'
-      });
-    }
-    
-    const formData = new URLSearchParams();
-    formData.append('key', imgbbApiKey);
-    formData.append('image', base64Image);
-    formData.append('name', `avatar-${req.user.id}-${Date.now()}`);
-    
-    console.log('Отправка запроса к ImgBB API');
-    const imgbbResponse = await new Promise((resolve, reject) => {
-      const options = {
-        hostname: 'api.imgbb.com',
-        path: '/1/upload',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': formData.toString().length
-        }
-      };
-      
-      const req = https.request(options, (res) => {
-        let responseData = '';
-        
-        res.on('data', (chunk) => {
-          responseData += chunk;
-        });
-        
-        res.on('end', () => {
-          try {
-            console.log('Получен ответ от ImgBB API:', responseData);
-            const parsedData = JSON.parse(responseData);
-            resolve(parsedData);
-          } catch (error) {
-            console.error('Ошибка при парсинге ответа от ImgBB:', error);
-            reject(error);
+    const buffer = Buffer.from(base64Image, 'base64');
+
+    // Готовим multipart/form-data
+    const form = new FormData();
+    form.append('source', buffer, {
+      filename: `avatar-${req.user.id}-${Date.now()}.jpg`,
+      contentType: 'image/jpeg'
+    });
+
+    // Опции запроса
+    const options = {
+      method: 'POST',
+      headers: {
+        ...form.getHeaders(),
+        'X-API-Key': process.env.RADIKAL_API_KEY
+      }
+    };
+
+    // Отправляем запрос
+    const request = https.request('https://radikal.cloud/api/1/upload', options, (response) => {
+      let data = '';
+      response.on('data', (chunk) => { data += chunk; });
+      response.on('end', async () => {
+        try {
+          const result = JSON.parse(data);
+          if (!result.success && !result.image) {
+            return res.status(500).json({ success: false, error: 'Ошибка при загрузке на Radikal.cloud' });
           }
-        });
-      });
-      
-      req.on('error', (error) => {
-        console.error('Ошибка при запросе к ImgBB:', error);
-        reject(error);
-      });
-      
-      req.write(formData.toString());
-      req.end();
-    });
-    
-    console.log('Ответ от ImgBB:', imgbbResponse);
-    
-    if (!imgbbResponse.success) {
-      console.error('Ошибка при загрузке на ImgBB:', imgbbResponse);
-      return res.status(500).json({
-        success: false,
-        error: 'Ошибка при загрузке изображения на ImgBB'
-      });
-    }
-    
-    // Получаем URL загруженного изображения
-    const imageUrl = imgbbResponse.data.url;
-    console.log('URL загруженного изображения:', imageUrl);
-    
-    // Обновляем аватар пользователя в базе данных
-    console.log('Обновление аватара в базе данных для пользователя:', req.user.id);
-    const updateResult = await new Promise((resolve, reject) => {
-      db.query(
-        'UPDATE user SET avatar = ? WHERE id = ?',
-        [imageUrl, req.user.id],
-        (err, results) => {
-          if (err) {
-            console.error('Ошибка при обновлении аватара в БД:', err);
-            reject(err);
-          } else {
-            console.log('Аватар успешно обновлен в БД');
-            resolve(results);
+          // В зависимости от структуры ответа Radikal.cloud:
+          // Обычно ссылка на картинку: result.image.url или result.file.url
+          const imageUrl = result.image?.url || result.file?.url || result.url || null;
+          if (!imageUrl) {
+            return res.status(500).json({ success: false, error: 'Не удалось получить ссылку на изображение' });
           }
+          // Сохраняем ссылку в БД
+          await new Promise((resolve, reject) => {
+            db.query('UPDATE user SET avatar = ? WHERE id = ?', [imageUrl, req.user.id], (err) => {
+              if (err) return reject(err);
+              resolve();
+            });
+          });
+          res.json({ success: true, message: 'Аватар успешно обновлен', avatar: imageUrl });
+        } catch (e) {
+          res.status(500).json({ success: false, error: 'Ошибка при обработке ответа Radikal.cloud' });
         }
-      );
+      });
     });
-    
-    console.log('Отправка успешного ответа клиенту');
-    res.json({
-      success: true,
-      message: 'Аватар успешно обновлен',
-      avatar: imageUrl
+
+    request.on('error', (err) => {
+      res.status(500).json({ success: false, error: 'Ошибка при отправке запроса на Radikal.cloud' });
     });
+
+    form.pipe(request);
   } catch (error) {
-    console.error('Ошибка при загрузке аватара:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Ошибка при загрузке аватара'
-    });
+    res.status(500).json({ success: false, error: 'Ошибка при загрузке аватара' });
   }
 });
 
